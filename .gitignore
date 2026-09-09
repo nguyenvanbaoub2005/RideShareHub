@@ -1,0 +1,512 @@
+# ==========================================
+
+# RideShareHub
+
+# Git Ignore
+
+# ==========================================
+
+# ==========================================
+
+# macOS
+
+# ==========================================
+
+.DS_Store
+
+# Environment / Secrets
+
+# ==========================================
+
+.env
+.env.*
+!.env.example
+
+*.env
+
+secrets/
+secret/
+credentials/
+credentials.json
+
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+
+# ==========================================
+
+# Node.js / React / React Native
+
+# ==========================================
+
+node_modules/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+.npm/
+.yarn/
+.pnpm-store/
+
+package-lock.json.tmp
+
+dist/
+build/
+
+.cache/
+.parcel-cache/
+
+.vite/
+
+.next/
+.nuxt/
+
+coverage/
+
+.eslintcache
+
+*.tsbuildinfo
+
+# ==========================================
+
+# Expo / React Native
+
+# ==========================================
+
+.expo/
+.expo-shared/
+
+web-build/
+
+android/.gradle/
+android/app/build/
+android/build/
+
+ios/build/
+ios/Pods/
+
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+DerivedData/
+
+# ==========================================
+
+# Java / Spring Boot / Maven
+
+# ==========================================
+
+target/
+
+*.class
+
+*.jar
+*.war
+*.ear
+
+.mvn/timing.properties
+
+hs_err_pid*
+
+replay_pid*
+
+.springBeans
+.sts4-cache/
+
+# ==========================================
+
+# Gradle
+
+# ==========================================
+
+.gradle/
+
+**/build/
+
+!gradle/wrapper/gradle-wrapper.jar
+
+# ==========================================
+
+# Python
+
+# ==========================================
+
+**pycache**/
+
+*.py[cod]
+*$py.class
+
+*.so
+
+.Python
+
+venv/
+.venv/
+env/
+ENV/
+
+pip-log.txt
+pip-delete-this-directory.txt
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+
+.coverage
+.coverage.*
+
+htmlcov/
+
+.tox/
+
+.nox/
+
+*.egg-info/
+.eggs/
+
+dist/
+build/
+
+# ==========================================
+
+# FastAPI / Python Runtime
+
+# ==========================================
+
+instance/
+
+*.sqlite
+*.sqlite3
+*.db
+
+# ==========================================
+
+# Database
+
+# ==========================================
+
+*.sqlite
+*.sqlite3
+
+*.db
+
+*.db-journal
+
+postgres-data/
+mysql-data/
+redis-data/
+
+data/
+
+# ==========================================
+
+# Docker
+
+# ==========================================
+
+docker-data/
+
+.docker/
+
+docker-compose.override.yml
+
+# ==========================================
+
+# Logs
+
+# ==========================================
+
+logs/
+
+*.log
+
+log/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ==========================================
+
+# Temporary Files
+
+# ==========================================
+
+tmp/
+temp/
+
+*.tmp
+*.temp
+
+*.swp
+*.swo
+
+*~
+
+*.bak
+
+*.old
+
+*.orig
+
+# ==========================================
+
+# macOS
+
+# ==========================================
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+Icon?
+
+._*
+
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+
+.com.apple.timemachine.donotpresent
+
+# ==========================================
+
+# Windows
+
+# ==========================================
+
+Thumbs.db
+Thumbs.db:encryptable
+
+ehthumbs.db
+ehthumbs_vista.db
+
+Desktop.ini
+
+$RECYCLE.BIN/
+
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# ==========================================
+
+# Linux
+
+# ==========================================
+
+*~
+
+.directory
+
+.Trash-*
+
+# ==========================================
+
+# IntelliJ IDEA
+
+# ==========================================
+
+.idea/
+
+*.iws
+*.iml
+*.ipr
+
+out/
+
+# ==========================================
+
+# VS Code
+
+# ==========================================
+
+.vscode/
+
+!.vscode/extensions.json
+!.vscode/settings.example.json
+
+# ==========================================
+
+# Eclipse / Spring Tool Suite
+
+# ==========================================
+
+.metadata
+
+bin/
+
+tmp/
+
+*.tmp
+*.bak
+*.swp
+
+*~.nib
+
+local.properties
+
+.settings/
+
+.loadpath
+
+.recommenders/
+
+.factorypath
+
+.project
+.classpath
+
+# ==========================================
+
+# NetBeans
+
+# ==========================================
+
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# ==========================================
+
+# Test / Coverage
+
+# ==========================================
+
+coverage/
+
+.nyc_output/
+
+junit.xml
+
+test-results/
+
+playwright-report/
+
+blob-report/
+
+playwright/.cache/
+
+# ==========================================
+
+# Cypress
+
+# ==========================================
+
+cypress/videos/
+cypress/screenshots/
+
+# ==========================================
+
+# Terraform / Infrastructure
+
+# ==========================================
+
+.terraform/
+
+*.tfstate
+*.tfstate.*
+
+crash.log
+crash.*.log
+
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+.terraformrc
+terraform.rc
+
+# ==========================================
+
+# Kubernetes local / generated files
+
+# ==========================================
+
+kubeconfig
+
+*.kubeconfig
+
+# ==========================================
+
+# IDE AI tools local data
+
+# ==========================================
+
+.cursor/
+
+.claude/
+
+.codex/
+
+.windsurf/
+
+# ==========================================
+
+# Local project files
+
+# ==========================================
+
+local/
+
+private/
+
+downloads/
+
+uploads/
+
+storage/
+
+# ==========================================
+
+# Archive files
+
+# ==========================================
+
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# ==========================================
+
+# Large Generated Files
+
+# ==========================================
+
+*.dump
+
+*.sql.gz
+
+*.backup
+
+# ==========================================
+
+# Keep documentation and AI agent rules
+
+# ==========================================
+
+!.agents/
+!.agents/**
+
+!chapter-*/
+!chapter-*/**
+
+!AGENTS.md
+!README.md
