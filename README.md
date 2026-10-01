@@ -1,5 +1,22 @@
 # RideShareHub
 
+Multi-operator shared ride booking platform.
+
+## Development prerequisites
+
+- Java 21 and Maven 3.9+
+- Node.js 22.22.2+
+- Python 3.12+
+- Docker with Compose
+
+## Foundation commands
+
+```bash
+docker compose -f infra/compose.yml up --build
+```
+
+Module checks are documented by their manifests and run automatically through `.github/workflows/ci.yml` on pull requests and pushes to `dev`.
+
 RideShareHub là dự án phát triển phần mềm có hỗ trợ AI Agent dành cho một **nền tảng đặt xe ghép đa nhà xe**.
 
 Nền tảng kết nối hành khách, nhà xe, tài xế và quản trị viên trong cùng một hệ thống.

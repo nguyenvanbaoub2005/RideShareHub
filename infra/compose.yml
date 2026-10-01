@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ridesharehub
+      POSTGRES_USER: ridesharehub
+      POSTGRES_PASSWORD: ridesharehub_local
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ridesharehub -d ridesharehub"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - ridesharehub_postgres:/var/lib/postgresql/data
+  backend:
+    build: ../backend
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/ridesharehub
+      DB_USERNAME: ridesharehub
+      DB_PASSWORD: ridesharehub_local
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  optimizer:
+    build: ../optimizer
+    ports:
+      - "${OPTIMIZER_PORT:-8000}:8000"
+volumes:
+  ridesharehub_postgres:
