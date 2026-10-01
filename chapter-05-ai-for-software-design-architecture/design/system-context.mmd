@@ -1,0 +1,18 @@
+flowchart LR
+    P[Passenger client] -->|HTTPS / realtime| API[RideShareHub API]
+    C[Company operations client] -->|HTTPS| API
+    D[Driver client] -->|HTTPS / location events| API
+    A[Admin client] -->|HTTPS| API
+    API --> DB[(PostgreSQL)]
+    API --> OPT[Route Optimizer]
+    OPT --> ROUTE[Map / Routing Provider]
+    API --> RT[Realtime Gateway]
+    RT --> P
+    RT --> C
+    RT --> D
+    subgraph RideShareHub boundary
+      API
+      DB
+      OPT
+      RT
+    end

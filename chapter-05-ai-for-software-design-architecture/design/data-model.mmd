@@ -1,0 +1,32 @@
+erDiagram
+    USER ||--o| TRANSPORT_COMPANY : owns
+    USER ||--o| DRIVER : authenticates
+    TRANSPORT_COMPANY ||--o{ VEHICLE : owns
+    TRANSPORT_COMPANY ||--o{ DRIVER : employs
+    TRANSPORT_COMPANY ||--o{ ROUTE : defines
+    TRANSPORT_COMPANY ||--o{ TRIP : operates
+    ROUTE ||--o{ TRIP : schedules
+    VEHICLE ||--o{ TRIP : assigned
+    DRIVER ||--o{ TRIP : assigned
+    USER ||--o{ BOOKING : places
+    TRIP ||--o{ BOOKING : receives
+    BOOKING ||--|{ TRIP_STOP : creates
+    TRIP ||--o{ TRIP_STOP : contains
+    TRIP ||--o{ ROUTE_PROPOSAL : evaluates
+    ROUTE_PROPOSAL ||--|{ ROUTE_PROPOSAL_STOP : orders
+    TRIP_STOP ||--o{ ROUTE_PROPOSAL_STOP : references
+    TRIP ||--o{ DRIVER_LOCATION : receives
+    BOOKING ||--o| RATING : permits
+
+    USER { bigint id PK string email string phone string password_hash string full_name string role string status timestamptz created_at }
+    TRANSPORT_COMPANY { bigint id PK bigint owner_user_id FK string name string status bigint approved_by FK timestamptz approved_at bigint version }
+    VEHICLE { bigint id PK bigint company_id FK string plate_number string vehicle_type int seat_capacity string status }
+    DRIVER { bigint id PK bigint user_id FK bigint company_id FK string license_number string status boolean is_available }
+    ROUTE { bigint id PK bigint company_id FK string origin_name string destination_name int estimated_duration_min decimal base_price string status }
+    TRIP { bigint id PK bigint route_id FK bigint company_id FK bigint vehicle_id FK bigint driver_id FK string driver_assignment_status timestamptz departure_time timestamptz estimated_arrival_time decimal price_per_seat int total_seats int booked_seats bigint version string status }
+    BOOKING { bigint id PK string booking_code bigint trip_id FK bigint passenger_id FK int seat_count string pickup_address string dropoff_address decimal estimated_fare string status string idempotency_key bigint version }
+    TRIP_STOP { bigint id PK bigint trip_id FK bigint booking_id FK string stop_type string address int seat_delta string status bigint version }
+    ROUTE_PROPOSAL { bigint id PK bigint trip_id FK string status int estimated_distance_m int estimated_duration_s decimal optimized_cost string source bigint reviewed_by FK timestamptz reviewed_at bigint version }
+    ROUTE_PROPOSAL_STOP { bigint proposal_id PK_FK bigint trip_stop_id PK_FK int sequence_no timestamptz planned_eta }
+    DRIVER_LOCATION { bigint id PK bigint trip_id FK bigint driver_id FK decimal lat decimal lng timestamptz recorded_at }
+    RATING { bigint id PK bigint booking_id FK bigint trip_id FK bigint passenger_id FK bigint driver_id FK bigint company_id FK smallint driver_score smallint company_score string comment }

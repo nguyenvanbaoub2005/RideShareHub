@@ -1,0 +1,536 @@
+openapi: 3.1.0
+info:
+  title: RideShareHub V1 API
+  version: 0.1.0-draft
+  description: Proposed contract for the accepted V1 core journey. Open product policies remain unresolved.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Companies
+  - name: Trips
+  - name: Bookings
+  - name: Execution
+  - name: Tracking
+  - name: Ratings
+paths:
+  /companies/registrations:
+    post:
+      tags: [Companies]
+      summary: Submit a Transport Company registration
+      operationId: registerCompany
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompanyRegistrationRequest'
+      responses:
+        '201':
+          description: Registration created in PENDING state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /admin/companies/{companyId}/decision:
+    post:
+      tags: [Companies]
+      summary: Approve or reject a pending company
+      operationId: decideCompanyRegistration
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision:
+                  type: string
+                  enum: [APPROVE, REJECT]
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: Decision persisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+  /trips:
+    get:
+      tags: [Trips]
+      summary: Search bookable Trips
+      operationId: searchTrips
+      parameters:
+        - name: origin
+          in: query
+          required: true
+          schema: { type: string }
+        - name: destination
+          in: query
+          required: true
+          schema: { type: string }
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: companyId
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [DEPARTURE_ASC, FARE_ASC, RATING_DESC, SEATS_DESC]
+      responses:
+        '200':
+          description: Matching Trips; an empty array is a valid result
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TripSummary' }
+    post:
+      tags: [Trips]
+      summary: Create a company-owned draft Trip
+      operationId: createTrip
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTripRequest' }
+      responses:
+        '201':
+          description: Draft created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Trip' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /trips/{tripId}/publish:
+    post:
+      tags: [Trips]
+      summary: Publish a valid draft Trip
+      operationId: publishTrip
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Trip published
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Trip' }
+        '409':
+          $ref: '#/components/responses/ConflictError'
+  /trips/{tripId}/bookings:
+    post:
+      tags: [Bookings]
+      summary: Atomically request seats and create pickup/dropoff stops
+      operationId: createBooking
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateBookingRequest' }
+      responses:
+        '201':
+          description: Booking created under the accepted confirmation policy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /bookings/{bookingId}:
+    get:
+      tags: [Bookings]
+      summary: Get an authorized Booking
+      operationId: getBooking
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Current Booking
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+  /bookings/{bookingId}/cancel:
+    post:
+      tags: [Bookings]
+      summary: Cancel under the accepted cancellation policy
+      operationId: cancelBooking
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Booking cancelled and capacity released once
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '409':
+          $ref: '#/components/responses/ConflictError'
+  /trips/{tripId}/route-proposals:
+    post:
+      tags: [Execution]
+      summary: Produce an advisory ordered stop proposal
+      operationId: proposeTripRoute
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200':
+          description: Validated proposal; no Trip or Booking transition implied
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouteProposal' }
+        '503':
+          $ref: '#/components/responses/DependencyError'
+  /trips/{tripId}/route-proposals/{proposalId}/decision:
+    post:
+      tags: [Execution]
+      summary: Accept or reject a route proposal without changing Booking state
+      operationId: decideRouteProposal
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - name: proposalId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, expectedVersion]
+              properties:
+                decision: { type: string, enum: [ACCEPT, REJECT] }
+                reviewNote: { type: string, maxLength: 500 }
+                expectedVersion: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Proposal decision persisted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouteProposal' }
+        '409':
+          $ref: '#/components/responses/ConflictError'
+  /trips/{tripId}/driver-transition:
+    post:
+      tags: [Execution]
+      summary: Apply an assigned Driver Trip transition
+      operationId: transitionDriverTrip
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transition]
+              properties:
+                transition:
+                  type: string
+                  enum: [ACCEPT, READY, START, COMPLETE]
+                expectedVersion: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Transition persisted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Trip' }
+        '409':
+          $ref: '#/components/responses/ConflictError'
+  /trips/{tripId}/stops/{stopId}/transition:
+    post:
+      tags: [Execution]
+      summary: Mark an assigned Trip stop arrived or completed
+      operationId: transitionTripStop
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - name: stopId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transition, expectedVersion]
+              properties:
+                transition: { type: string, enum: [ARRIVE, COMPLETE] }
+                expectedVersion: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Stop transition persisted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripStop' }
+        '409':
+          $ref: '#/components/responses/ConflictError'
+  /trips/{tripId}/locations:
+    post:
+      tags: [Tracking]
+      summary: Submit assigned Driver location
+      operationId: submitDriverLocation
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocationSample' }
+      responses:
+        '202': { description: Location accepted }
+  /trips/{tripId}/tracking:
+    get:
+      tags: [Tracking]
+      summary: Load authorized current tracking snapshot
+      operationId: getTrackingSnapshot
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200':
+          description: Durable state plus latest available operational location
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrackingSnapshot' }
+  /bookings/{bookingId}/rating:
+    post:
+      tags: [Ratings]
+      summary: Rate the company and Driver after a completed Booking
+      operationId: createRating
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [score]
+              properties:
+                score:
+                  type: integer
+                  description: Allowed scale remains an open product decision; validation is added after approval.
+                comment: { type: string, maxLength: 1000 }
+      responses:
+        '201': { description: Rating stored for the eligible completed Booking }
+        '409':
+          $ref: '#/components/responses/ConflictError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    CompanyId:
+      name: companyId
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    TripId:
+      name: tripId
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 8, maxLength: 100 }
+  responses:
+    ValidationError:
+      description: Input or business validation failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ConflictError:
+      description: Capacity, transition, schedule or version conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFoundError:
+      description: Resource not found or not visible to this actor
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    DependencyError:
+      description: Optimizer or routing dependency unavailable
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    CompanyRegistrationRequest:
+      type: object
+      required: [name, phone, address, representativeName, businessInformation]
+      properties:
+        name: { type: string, maxLength: 200 }
+        phone: { type: string, maxLength: 30 }
+        address: { type: string, maxLength: 500 }
+        representativeName: { type: string, maxLength: 200 }
+        businessInformation: { type: string, maxLength: 2000 }
+    Company:
+      type: object
+      required: [id, name, status, version]
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED] }
+        version: { type: integer, format: int64 }
+    CreateTripRequest:
+      type: object
+      required: [routeId, vehicleId, driverId, departureAt, fare]
+      properties:
+        routeId: { type: integer, format: int64 }
+        vehicleId: { type: integer, format: int64 }
+        driverId: { type: integer, format: int64 }
+        departureAt: { type: string, format: date-time }
+        fare: { type: number, minimum: 0 }
+    TripSummary:
+      type: object
+      required: [id, companyId, companyName, departureAt, vehicleType, availableSeats, fare, status]
+      properties:
+        id: { type: integer, format: int64 }
+        companyId: { type: integer, format: int64 }
+        companyName: { type: string }
+        departureAt: { type: string, format: date-time }
+        vehicleType: { type: string }
+        availableSeats: { type: integer, minimum: 0 }
+        fare: { type: number, minimum: 0 }
+        rating: { type: number, minimum: 0 }
+        status: { type: string, enum: [DRAFT, PUBLISHED, FULL, IN_PROGRESS, COMPLETED, CANCELLED] }
+    Trip:
+      allOf:
+        - $ref: '#/components/schemas/TripSummary'
+        - type: object
+          required: [routeId, vehicleId, driverId, driverAssignmentStatus, capacity, activeBookedSeats, version]
+          properties:
+            routeId: { type: integer, format: int64 }
+            vehicleId: { type: integer, format: int64 }
+            driverId: { type: integer, format: int64 }
+            driverAssignmentStatus: { type: string, enum: [ASSIGNED, ACCEPTED, READY] }
+            capacity: { type: integer, minimum: 1 }
+            activeBookedSeats: { type: integer, minimum: 0 }
+            version: { type: integer, format: int64 }
+    CreateBookingRequest:
+      type: object
+      required: [seatCount, pickup, dropoff]
+      properties:
+        seatCount: { type: integer, minimum: 1 }
+        pickup: { $ref: '#/components/schemas/LocationInput' }
+        dropoff: { $ref: '#/components/schemas/LocationInput' }
+    LocationInput:
+      type: object
+      required: [label]
+      properties:
+        label: { type: string, maxLength: 500 }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+    Booking:
+      type: object
+      required: [id, passengerId, tripId, seatCount, pickup, dropoff, fareEstimate, status]
+      properties:
+        id: { type: integer, format: int64 }
+        passengerId: { type: integer, format: int64 }
+        tripId: { type: integer, format: int64 }
+        seatCount: { type: integer, minimum: 1 }
+        pickup: { $ref: '#/components/schemas/LocationInput' }
+        dropoff: { $ref: '#/components/schemas/LocationInput' }
+        fareEstimate: { type: number, minimum: 0 }
+        status: { type: string, enum: [PENDING, CONFIRMED, PICKED_UP, COMPLETED, CANCELLED, NO_SHOW] }
+    TripStop:
+      type: object
+      required: [id, tripId, bookingId, type, location, seatDelta, status, version]
+      properties:
+        id: { type: integer, format: int64 }
+        tripId: { type: integer, format: int64 }
+        bookingId: { type: integer, format: int64 }
+        type: { type: string, enum: [PICKUP, DROPOFF] }
+        location: { $ref: '#/components/schemas/LocationInput' }
+        seatDelta: { type: integer }
+        status: { type: string, enum: [PENDING, ARRIVED, COMPLETED] }
+        version: { type: integer, format: int64 }
+    RouteProposal:
+      type: object
+      required: [id, tripId, status, orderedStops, version]
+      properties:
+        id: { type: integer, format: int64 }
+        tripId: { type: integer, format: int64 }
+        status: { type: string, enum: [PROPOSED, ACCEPTED, REJECTED, SUPERSEDED] }
+        orderedStops:
+          type: array
+          items: { $ref: '#/components/schemas/RouteProposalStop' }
+        estimatedDistanceMeters: { type: integer, minimum: 0 }
+        estimatedDurationSeconds: { type: integer, minimum: 0 }
+        version: { type: integer, format: int64 }
+    RouteProposalStop:
+      type: object
+      required: [tripStopId, sequence]
+      properties:
+        tripStopId: { type: integer, format: int64 }
+        sequence: { type: integer, minimum: 0 }
+        plannedEta: { type: string, format: date-time }
+    LocationSample:
+      type: object
+      required: [latitude, longitude, recordedAt]
+      properties:
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        recordedAt: { type: string, format: date-time }
+    TrackingSnapshot:
+      type: object
+      required: [tripId, tripStatus, stops, version]
+      properties:
+        tripId: { type: integer, format: int64 }
+        tripStatus: { type: string }
+        latestLocation: { $ref: '#/components/schemas/LocationSample' }
+        nextStop: { $ref: '#/components/schemas/TripStop' }
+        stops:
+          type: array
+          items: { $ref: '#/components/schemas/TripStop' }
+        version: { type: integer, format: int64 }
+    Error:
+      type: object
+      required: [code, message, traceId]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        fieldErrors:
+          type: array
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string }
+              message: { type: string }
+        traceId: { type: string }
