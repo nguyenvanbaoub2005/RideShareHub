@@ -12,7 +12,7 @@
 
 # ==========================================
 
-.DS_Store
+**/.DS_Store
 
 # Environment / Secrets
 
@@ -510,3 +510,6 @@ storage/
 
 !AGENTS.md
 !README.md
+
+# Ignore macOS metadata after directory exceptions
+**/.DS_Store
