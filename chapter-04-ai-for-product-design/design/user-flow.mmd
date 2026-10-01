@@ -1,0 +1,24 @@
+flowchart TD
+    A["Open journey prototype"] --> B["Admin reviews pending company"]
+    B --> C{"Approve?"}
+    C -->|No| B1["Company remains unable to publish"]
+    C -->|Yes| D["Company reviews Vehicle Driver Route"]
+    D --> E["Publish scheduled Trip"]
+    E --> F["Passenger searches origin destination date"]
+    F --> G{"Matching Trips?"}
+    G -->|No| F1["Empty state: change search and retry"]
+    G -->|Failure| F2["Keep criteria and retry"]
+    G -->|Yes| H["Compare and select Trip"]
+    H --> I["Enter seats pickup dropoff"]
+    I --> J{"Capacity and input valid?"}
+    J -->|No| I1["Keep input explain conflict retry"]
+    J -->|Yes| K["Create Booking and stops"]
+    K --> L["Review proposed stop order"]
+    L --> M["Driver accepts and starts Trip"]
+    M --> N["Mark pickup arrived completed"]
+    N --> O["Passenger sees live progress"]
+    O --> P["Mark dropoff arrived completed"]
+    P --> Q{"Unresolved active stops?"}
+    Q -->|Yes| N
+    Q -->|No| R["Complete Trip"]
+    R --> S["Passenger rates company and Driver"]
