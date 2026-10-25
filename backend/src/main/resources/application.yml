@@ -11,6 +11,10 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+jwt:
+  signer-key: ${JWT_SECRET}
+  access-token-seconds: ${JWT_ACCESS_TOKEN_SECONDS:900}
+  refresh-token-seconds: ${JWT_REFRESH_TOKEN_SECONDS:604800}
 management:
   endpoints:
     web:
