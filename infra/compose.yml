@@ -20,7 +20,7 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/ridesharehub
       DB_USERNAME: ridesharehub
       DB_PASSWORD: ridesharehub_local
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      JWT_SECRET: ${JWT_SECRET:-dev_insecure_jwt_secret_key_needs_to_be_at_least_64_bytes_long_for_hs512}
       JWT_ACCESS_TOKEN_SECONDS: ${JWT_ACCESS_TOKEN_SECONDS:-900}
       JWT_REFRESH_TOKEN_SECONDS: ${JWT_REFRESH_TOKEN_SECONDS:-604800}
     ports:
