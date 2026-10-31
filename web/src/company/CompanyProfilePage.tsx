@@ -44,10 +44,24 @@ export function CompanyProfilePage() {
           <span className="topbar__role-badge">Nhà xe</span>
         </div>
         <nav className="topbar__nav">
+          <Link id="nav-profile-active" className="topbar__link topbar__link--active" to="/company/profile">
+            Hồ sơ
+          </Link>
           {company?.status === 'APPROVED' && (
-            <Link id="nav-vehicles" className="topbar__link topbar__link--active" to="/company/vehicles">
-              Đội xe
-            </Link>
+            <>
+              <Link id="nav-vehicles" className="topbar__link" to="/company/vehicles">
+                Đội xe
+              </Link>
+              <Link id="nav-drivers" className="topbar__link" to="/company/drivers">
+                Tài xế
+              </Link>
+              <Link id="nav-routes" className="topbar__link" to="/company/routes">
+                Tuyến đường
+              </Link>
+              <Link id="nav-trips" className="topbar__link" to="/company/trips">
+                Chuyến xe
+              </Link>
+            </>
           )}
         </nav>
         <button id="company-logout" className="btn btn--ghost btn--sm" onClick={handleLogout}>

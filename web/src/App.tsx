@@ -7,6 +7,12 @@ import { AdminCompanyDetailPage } from './admin/AdminCompanyDetailPage';
 import { CompanyProfilePage } from './company/CompanyProfilePage';
 import { VehicleListPage } from './company/VehicleListPage';
 import { VehicleFormPage } from './company/VehicleFormPage';
+import { DriverListPage } from './company/DriverListPage';
+import { DriverFormPage } from './company/DriverFormPage';
+import { RouteListPage } from './company/RouteListPage';
+import { RouteFormPage } from './company/RouteFormPage';
+import { TripListPage } from './company/TripListPage';
+import { TripFormPage } from './company/TripFormPage';
 
 /** Redirects unauthenticated to /login */
 function RequireAdmin() {
@@ -50,6 +56,15 @@ export function App() {
           <Route path="/company/vehicles" element={<VehicleListPage />} />
           <Route path="/company/vehicles/new" element={<VehicleFormPage />} />
           <Route path="/company/vehicles/:vehicleId/edit" element={<VehicleFormPage />} />
+          <Route path="/company/drivers" element={<DriverListPage />} />
+          <Route path="/company/drivers/new" element={<DriverFormPage />} />
+          <Route path="/company/drivers/:driverId/edit" element={<DriverFormPage />} />
+          <Route path="/company/routes" element={<RouteListPage />} />
+          <Route path="/company/routes/new" element={<RouteFormPage />} />
+          <Route path="/company/routes/:routeId/edit" element={<RouteFormPage />} />
+          <Route path="/company/trips" element={<TripListPage />} />
+          <Route path="/company/trips/new" element={<TripFormPage />} />
+          <Route path="/company/trips/:tripId/edit" element={<TripFormPage />} />
         </Route>
 
         <Route path="*" element={<DefaultRedirect />} />

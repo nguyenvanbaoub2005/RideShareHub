@@ -60,6 +60,9 @@ export function VehicleListPage() {
         <nav className="topbar__nav">
           <Link id="nav-profile" className="topbar__link" to="/company/profile">Hồ sơ</Link>
           <Link id="nav-vehicles-active" className="topbar__link topbar__link--active" to="/company/vehicles">Đội xe</Link>
+          <Link id="nav-drivers" className="topbar__link" to="/company/drivers">Tài xế</Link>
+          <Link id="nav-routes" className="topbar__link" to="/company/routes">Tuyến đường</Link>
+          <Link id="nav-trips" className="topbar__link" to="/company/trips">Chuyến xe</Link>
         </nav>
         <button id="vehicles-logout" className="btn btn--ghost btn--sm" onClick={handleLogout}>Đăng xuất</button>
       </header>
