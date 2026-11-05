@@ -21,6 +21,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22.22.2', cache: npm, cache-dependency-path: web/package-lock.json }
       - run: npm ci
+      # Vite 8 (rolldown) and TypeScript 7 use platform-specific native binaries.
+      # npm ci does not install optional deps of transitive packages (npm bug #4828).
+      # Explicitly install the linux/x64 bindings needed on this CI runner.
+      - run: npm install @rolldown/binding-linux-x64-gnu @typescript/typescript-linux-x64 --no-save
       - run: npm test
       - run: npm run build
   mobile:
