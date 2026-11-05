@@ -10,6 +10,13 @@ const LABELS: Record<string, string> = {
   IN_USE: 'Đang dùng',
   MAINTENANCE: 'Bảo dưỡng',
   INACTIVE: 'Ngưng hoạt động',
+  DRAFT: 'Bản nháp',
+  PUBLISHED: 'Đã mở bán',
+  FULL: 'Đã hết chỗ',
+  IN_PROGRESS: 'Đang chạy',
+  COMPLETED: 'Đã hoàn thành',
+  CANCELLED: 'Đã huỷ',
+  ON_TRIP: 'Đang chạy',
 };
 
 const VARIANT_MAP: Record<string, BadgeVariant> = {
@@ -20,6 +27,13 @@ const VARIANT_MAP: Record<string, BadgeVariant> = {
   IN_USE: 'in-use',
   MAINTENANCE: 'maintenance',
   INACTIVE: 'inactive',
+  DRAFT: 'neutral',
+  PUBLISHED: 'approved',
+  FULL: 'maintenance',
+  IN_PROGRESS: 'in-use',
+  COMPLETED: 'neutral',
+  CANCELLED: 'rejected',
+  ON_TRIP: 'in-use',
 };
 
 interface BadgeProps {

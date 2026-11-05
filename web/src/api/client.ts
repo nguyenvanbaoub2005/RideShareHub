@@ -14,6 +14,8 @@ export interface ApiResponse<T> {
 
 export type CompanyStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type VehicleStatus = 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'INACTIVE';
+export type DriverStatus = 'AVAILABLE' | 'ON_TRIP' | 'INACTIVE';
+export type TripStatus = 'DRAFT' | 'PUBLISHED' | 'FULL' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
 export interface CompanyResponse {
   id: number;
@@ -41,6 +43,48 @@ export interface VehicleResponse {
   description: string | null;
   imageUrl: string | null;
   status: VehicleStatus;
+  createdAt: string;
+}
+
+export interface DriverResponse {
+  id: number;
+  companyId: number;
+  fullName: string;
+  phone: string;
+  licenseNumber: string;
+  status: DriverStatus;
+  createdAt: string;
+}
+
+export interface RouteResponse {
+  id: number;
+  companyId: number;
+  name: string;
+  origin: string;
+  destination: string;
+  estimatedMinutes: number;
+  baseFare: number;
+  description: string | null;
+  createdAt: string;
+}
+
+export interface TripResponse {
+  id: number;
+  routeId: number;
+  routeName: string;
+  origin: string;
+  destination: string;
+  companyId: number;
+  companyName: string;
+  vehicleId: number;
+  vehiclePlate: string;
+  seatCapacity: number;
+  driverId: number;
+  driverName: string;
+  departureTime: string;
+  fare: number;
+  note: string | null;
+  status: TripStatus;
   createdAt: string;
 }
 
@@ -173,4 +217,139 @@ export const companyApi = {
         body: JSON.stringify({ status }),
       },
     ),
+};
+
+// ------------------------------------------------------------------ drivers
+export const driverApi = {
+  listDrivers: (companyId: number) =>
+    request<DriverResponse[]>(`/api/v1/companies/${companyId}/drivers`),
+
+  addDriver: (
+    companyId: number,
+    data: {
+      fullName: string;
+      phone: string;
+      licenseNumber: string;
+    },
+  ) =>
+    request<DriverResponse>(`/api/v1/companies/${companyId}/drivers`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateDriver: (
+    companyId: number,
+    driverId: number,
+    data: {
+      fullName: string;
+      phone: string;
+      licenseNumber: string;
+    },
+  ) =>
+    request<DriverResponse>(`/api/v1/companies/${companyId}/drivers/${driverId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  updateDriverStatus: (companyId: number, driverId: number, status: DriverStatus) =>
+    request<DriverResponse>(
+      `/api/v1/companies/${companyId}/drivers/${driverId}/status`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ status }),
+      },
+    ),
+};
+
+// ------------------------------------------------------------------ routes
+export const routeApi = {
+  listRoutes: (companyId: number) =>
+    request<RouteResponse[]>(`/api/v1/companies/${companyId}/routes`),
+
+  addRoute: (
+    companyId: number,
+    data: {
+      name: string;
+      origin: string;
+      destination: string;
+      estimatedMinutes: number;
+      baseFare: number;
+      description?: string;
+    },
+  ) =>
+    request<RouteResponse>(`/api/v1/companies/${companyId}/routes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateRoute: (
+    companyId: number,
+    routeId: number,
+    data: {
+      name: string;
+      origin: string;
+      destination: string;
+      estimatedMinutes: number;
+      baseFare: number;
+      description?: string;
+    },
+  ) =>
+    request<RouteResponse>(`/api/v1/companies/${companyId}/routes/${routeId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteRoute: (companyId: number, routeId: number) =>
+    request<void>(`/api/v1/companies/${companyId}/routes/${routeId}`, {
+      method: 'DELETE',
+    }),
+};
+
+// ------------------------------------------------------------------ trips
+export const tripApi = {
+  listTrips: (companyId: number) =>
+    request<TripResponse[]>(`/api/v1/companies/${companyId}/trips`),
+
+  createTrip: (
+    companyId: number,
+    data: {
+      routeId: number;
+      vehicleId: number;
+      driverId: number;
+      departureTime: string;
+      fare: number;
+      note?: string;
+    },
+  ) =>
+    request<TripResponse>(`/api/v1/companies/${companyId}/trips`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateTrip: (
+    companyId: number,
+    tripId: number,
+    data: {
+      routeId: number;
+      vehicleId: number;
+      driverId: number;
+      departureTime: string;
+      fare: number;
+      note?: string;
+    },
+  ) =>
+    request<TripResponse>(`/api/v1/companies/${companyId}/trips/${tripId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  publishTrip: (companyId: number, tripId: number) =>
+    request<TripResponse>(`/api/v1/companies/${companyId}/trips/${tripId}/publish`, {
+      method: 'POST',
+    }),
+
+  cancelTrip: (companyId: number, tripId: number) =>
+    request<TripResponse>(`/api/v1/companies/${companyId}/trips/${tripId}/cancel`, {
+      method: 'POST',
+    }),
 };
