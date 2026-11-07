@@ -1,49 +1,188 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+/**
+ * SP2-P1-03: Passenger home — search form.
+ *
+ * Fields: origin, destination, date (YYYY-MM-DD), minSeats.
+ * All fields optional — blank search returns all PUBLISHED trips.
+ * Navigates to /(passenger)/results with serialised params.
+ */
+
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useAuth } from '../../src/session/AuthContext';
 
 export default function PassengerHomeScreen() {
   const { session, signOut, loading } = useAuth();
+  const router = useRouter();
+
+  const [origin, setOrigin] = useState('');
+  const [destination, setDestination] = useState('');
+  const [date, setDate] = useState('');
+  const [minSeats, setMinSeats] = useState('');
+
+  function handleSearch() {
+    router.push({
+      pathname: '/(passenger)/results',
+      params: {
+        origin: origin.trim(),
+        destination: destination.trim(),
+        date: date.trim(),
+        minSeats: minSeats.trim(),
+      },
+    });
+  }
 
   return (
-    <View style={styles.root}>
-      <View style={styles.header}>
-        <Text style={styles.brand}>RIDESHAREHUB</Text>
-        <Text style={styles.role}>🚌 Hành khách</Text>
-      </View>
-
-      <View style={styles.hero}>
-        <Text style={styles.greeting}>Xin chào! 👋</Text>
-        <Text style={styles.email}>{session?.role}</Text>
-        <Text style={styles.hint}>Tìm kiếm chuyến xe sẽ có ở đây (Sprint 2)</Text>
-      </View>
-
-      <Pressable
-        style={[styles.logoutBtn, loading && { opacity: 0.5 }]}
-        onPress={signOut}
-        disabled={loading}
-        accessibilityRole="button"
-        accessibilityLabel="Đăng xuất"
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        style={styles.root}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.logoutText}>Đăng xuất</Text>
-      </Pressable>
-    </View>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.brand}>RIDESHAREHUB</Text>
+          <Text style={styles.role}>🚌 Hành khách</Text>
+        </View>
+
+        {/* Search card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Tìm chuyến xe</Text>
+
+          <Text style={styles.label}>Điểm đi</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="VD: Hà Nội"
+            placeholderTextColor="#475569"
+            value={origin}
+            onChangeText={setOrigin}
+            returnKeyType="next"
+            autoCapitalize="words"
+          />
+
+          <Text style={styles.label}>Điểm đến</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="VD: Đà Nẵng"
+            placeholderTextColor="#475569"
+            value={destination}
+            onChangeText={setDestination}
+            returnKeyType="next"
+            autoCapitalize="words"
+          />
+
+          <Text style={styles.label}>Ngày khởi hành</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="YYYY-MM-DD (bỏ trống = tất cả)"
+            placeholderTextColor="#475569"
+            value={date}
+            onChangeText={setDate}
+            keyboardType="numbers-and-punctuation"
+            returnKeyType="next"
+            maxLength={10}
+          />
+
+          <Text style={styles.label}>Số ghế tối thiểu</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="1"
+            placeholderTextColor="#475569"
+            value={minSeats}
+            onChangeText={setMinSeats}
+            keyboardType="number-pad"
+            returnKeyType="search"
+            onSubmitEditing={handleSearch}
+          />
+
+          <Pressable
+            style={styles.searchBtn}
+            onPress={handleSearch}
+            accessibilityRole="button"
+            accessibilityLabel="Tìm kiếm chuyến xe"
+          >
+            <Text style={styles.searchBtnText}>🔍  Tìm kiếm</Text>
+          </Pressable>
+        </View>
+
+        {/* Sign-out */}
+        <Pressable
+          style={[styles.logoutBtn, loading && { opacity: 0.5 }]}
+          onPress={signOut}
+          disabled={loading}
+          accessibilityRole="button"
+          accessibilityLabel="Đăng xuất"
+        >
+          <Text style={styles.logoutText}>Đăng xuất</Text>
+        </Pressable>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a', paddingHorizontal: 24, paddingTop: 60 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 40 },
+  flex: { flex: 1, backgroundColor: '#0f172a' },
+  root: { flex: 1 },
+  content: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 40 },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 32,
+  },
   brand: { color: '#6366f1', fontSize: 13, fontWeight: '800', letterSpacing: 2 },
   role: { color: '#94a3b8', fontSize: 13 },
-  hero: {
+  card: {
     backgroundColor: '#1e293b',
     borderRadius: 20,
-    padding: 28,
-    marginBottom: 24,
+    padding: 24,
+    marginBottom: 20,
   },
-  greeting: { color: '#f1f5f9', fontSize: 28, fontWeight: '700' },
-  email: { color: '#6366f1', fontSize: 14, marginTop: 6 },
-  hint: { color: '#64748b', fontSize: 13, marginTop: 16, lineHeight: 20 },
+  cardTitle: {
+    color: '#f1f5f9',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 20,
+  },
+  label: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  input: {
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    color: '#f1f5f9',
+    fontSize: 15,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  searchBtn: {
+    backgroundColor: '#6366f1',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  searchBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   logoutBtn: {
     backgroundColor: '#1e293b',
     borderRadius: 14,
