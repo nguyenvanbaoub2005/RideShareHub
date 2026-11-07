@@ -94,6 +94,51 @@ export async function logout(
   });
 }
 
+// ---- Trip search (SP2-P1-01 / SP2-P1-02) -----------------------------------
+
+export interface TripSearchResult {
+  tripId: number;
+  routeId: number;
+  routeName: string;
+  origin: string;
+  destination: string;
+  estimatedMinutes: number;
+  departureTime: string; // ISO-8601
+  fare: number;
+  estimatedFare: number;
+  availableSeats: number;
+  vehicleType: string;
+  driverName: string;
+  status: string;
+}
+
+export interface TripSearchParams {
+  origin?: string;
+  destination?: string;
+  date?: string; // YYYY-MM-DD
+  minSeats?: number;
+}
+
+export async function searchTrips(
+  accessToken: string,
+  params: TripSearchParams,
+): Promise<TripSearchResult[]> {
+  const qs = new URLSearchParams();
+  if (params.origin) qs.set('origin', params.origin);
+  if (params.destination) qs.set('destination', params.destination);
+  if (params.date) qs.set('date', params.date);
+  if (params.minSeats != null) qs.set('minSeats', String(params.minSeats));
+
+  const result = await request<TripSearchResult[]>(
+    `/api/trips/search?${qs.toString()}`,
+    {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return result.data;
+}
+
 // ---- Error -----------------------------------------------------------------
 
 export class ApiError extends Error {
