@@ -1,7 +1,7 @@
 package com.ridesharehub.security;
 
-import com.ridesharehub.auth.InvalidatedTokenRepository;
-import com.ridesharehub.auth.UserRepository;
+import com.ridesharehub.auth.repository.InvalidatedTokenRepository;
+import com.ridesharehub.auth.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
