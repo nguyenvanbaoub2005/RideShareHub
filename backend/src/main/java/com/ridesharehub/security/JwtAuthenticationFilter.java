@@ -1,7 +1,7 @@
 package com.ridesharehub.security;
 
-import com.ridesharehub.auth.entity.InvalidatedTokenRepository;
-import com.ridesharehub.auth.entity.UserRepository;
+import com.ridesharehub.auth.repository.InvalidatedTokenRepository;
+import com.ridesharehub.auth.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,8 +13,6 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-import com.ridesharehub.auth.repository.InvalidatedTokenRepository;
-import com.ridesharehub.auth.repository.UserRepository;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {

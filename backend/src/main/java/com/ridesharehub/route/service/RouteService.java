@@ -1,6 +1,6 @@
 package com.ridesharehub.route.service;
 
-import com.ridesharehub.auth.entity.UserRole;
+import com.ridesharehub.auth.enums.UserRole;
 import com.ridesharehub.company.repository.CompanyRepository;
 import com.ridesharehub.company.entity.TransportCompany;
 import com.ridesharehub.security.AuthPrincipal;
@@ -9,7 +9,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import com.ridesharehub.auth.enums.UserRole;
 import com.ridesharehub.route.dto.RouteRequest;
 import com.ridesharehub.route.dto.RouteResponse;
 import com.ridesharehub.route.entity.Route;

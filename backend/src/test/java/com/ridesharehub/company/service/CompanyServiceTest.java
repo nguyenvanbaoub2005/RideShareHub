@@ -21,8 +21,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-import com.ridesharehub.auth.enums.UserRole;
-import com.ridesharehub.auth.repository.UserRepository;
 import com.ridesharehub.company.dto.CompanyDecisionRequest;
 import com.ridesharehub.company.dto.CompanyRegistrationRequest;
 import com.ridesharehub.company.dto.CompanyResponse;

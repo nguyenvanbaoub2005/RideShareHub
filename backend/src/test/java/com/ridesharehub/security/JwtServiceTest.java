@@ -7,7 +7,6 @@ import com.ridesharehub.auth.entity.User;
 import com.ridesharehub.auth.enums.UserRole;
 import java.lang.reflect.Field;
 import org.junit.jupiter.api.Test;
-import com.ridesharehub.auth.enums.UserRole;
 
 class JwtServiceTest {
     private final JwtService jwtService = new JwtService("a".repeat(64), 900, 604800);

@@ -1,16 +1,14 @@
 package com.ridesharehub.company.service;
 
 import com.ridesharehub.auth.entity.User;
-import com.ridesharehub.auth.entity.UserRepository;
-import com.ridesharehub.auth.entity.UserRole;
+import com.ridesharehub.auth.repository.UserRepository;
+import com.ridesharehub.auth.enums.UserRole;
 import com.ridesharehub.security.AuthPrincipal;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import com.ridesharehub.auth.enums.UserRole;
-import com.ridesharehub.auth.repository.UserRepository;
 import com.ridesharehub.company.dto.CompanyDecisionRequest;
 import com.ridesharehub.company.dto.CompanyRegistrationRequest;
 import com.ridesharehub.company.dto.CompanyResponse;
