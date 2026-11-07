@@ -36,3 +36,4 @@ export function useTripSearch(accessToken: string) {
 
   return { state, search, reset };
 }
+

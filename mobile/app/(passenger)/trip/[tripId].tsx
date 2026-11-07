@@ -206,3 +206,4 @@ const styles = StyleSheet.create({
   },
   bookingNote: { color: '#475569', fontSize: 13 },
 });
+

@@ -37,3 +37,4 @@ export function seatColor(seats: number): string {
   if (seats <= 5) return '#f59e0b'; // amber
   return '#22c55e'; // green
 }
+
