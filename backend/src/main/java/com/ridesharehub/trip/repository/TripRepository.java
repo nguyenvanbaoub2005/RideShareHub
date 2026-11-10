@@ -1,18 +1,35 @@
 package com.ridesharehub.trip.repository;
 
 import com.ridesharehub.trip.entity.Trip;
-
+import com.ridesharehub.trip.enums.TripStatus;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.data.domain.Pageable;
-import com.ridesharehub.trip.enums.TripStatus;
 
 public interface TripRepository extends JpaRepository<Trip, Long> {
 
     List<Trip> findAllByCompany_Id(Long companyId);
+
+    /**
+     * Acquires a row-level pessimistic write lock on the Trip row for
+     * capacity-safe booking creation and cancellation (SP2-P2-02 / ADR-002).
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT t FROM Trip t
+              JOIN FETCH t.route r
+              JOIN FETCH t.vehicle v
+              JOIN FETCH t.driver d
+              JOIN FETCH t.company c
+            WHERE t.id = :tripId
+            """)
+    Optional<Trip> findByIdForUpdate(@Param("tripId") Long tripId);
 
     /**
      * Detects scheduling conflict for a vehicle: any active trip
@@ -23,8 +40,8 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
             SELECT COUNT(t) > 0 FROM Trip t
             WHERE t.vehicle.id = :vehicleId
               AND t.id <> :excludeTripId
-              AND t.status NOT IN (com.ridesharehub.trip.entity.TripStatus.COMPLETED,
-                                   com.ridesharehub.trip.entity.TripStatus.CANCELLED)
+              AND t.status NOT IN (com.ridesharehub.trip.enums.TripStatus.COMPLETED,
+                                   com.ridesharehub.trip.enums.TripStatus.CANCELLED)
               AND t.departureTime BETWEEN :from AND :to
             """)
     boolean existsVehicleConflict(
@@ -40,8 +57,8 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
             SELECT COUNT(t) > 0 FROM Trip t
             WHERE t.driver.id = :driverId
               AND t.id <> :excludeTripId
-              AND t.status NOT IN (com.ridesharehub.trip.entity.TripStatus.COMPLETED,
-                                   com.ridesharehub.trip.entity.TripStatus.CANCELLED)
+              AND t.status NOT IN (com.ridesharehub.trip.enums.TripStatus.COMPLETED,
+                                   com.ridesharehub.trip.enums.TripStatus.CANCELLED)
               AND t.departureTime BETWEEN :from AND :to
             """)
     boolean existsDriverConflict(
@@ -57,15 +74,12 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
      * Filters optionally by origin substring, destination substring,
      * departure-day window and minimum-seats threshold.
      *
-     * availableSeats = vehicle.seatCapacity − confirmed bookings.
-     * Until SP2-P2-01 (Booking) is implemented the booking sub-select
-     * returns 0, so availableSeats equals full vehicle capacity.
+     * availableSeats = vehicle.seatCapacity − trip.bookedSeats.
      *
      * @param origin      case-insensitive substring, or null to skip
      * @param destination case-insensitive substring, or null to skip
      * @param from        start of day (inclusive), or null to skip
      * @param to          end of day (exclusive), or null to skip
-     * @param minSeats    minimum available seats required (≥ 1)
      */
     @Query("""
             SELECT t FROM Trip t
@@ -73,7 +87,7 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
               JOIN FETCH t.vehicle v
               JOIN FETCH t.driver d
               JOIN FETCH t.company c
-            WHERE t.status = com.ridesharehub.trip.entity.TripStatus.PUBLISHED
+            WHERE t.status = com.ridesharehub.trip.enums.TripStatus.PUBLISHED
               AND (:origin IS NULL
                    OR LOWER(r.origin) LIKE LOWER(CONCAT('%', :origin, '%')))
               AND (:destination IS NULL
@@ -89,4 +103,3 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
             @Param("to")          Instant to,
             Pageable pageable);
 }
-

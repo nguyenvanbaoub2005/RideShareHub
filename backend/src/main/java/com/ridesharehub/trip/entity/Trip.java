@@ -15,6 +15,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
 import com.ridesharehub.trip.enums.TripStatus;
@@ -55,6 +56,13 @@ public class Trip {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "trip_status")
     private TripStatus status = TripStatus.DRAFT;
+
+    @Column(name = "booked_seats", nullable = false)
+    private int bookedSeats = 0;
+
+    @Version
+    @Column(nullable = false)
+    private long version = 0L;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
@@ -114,6 +122,48 @@ public class Trip {
         this.updatedAt = Instant.now();
     }
 
+    /**
+     * Atomically claims {@code count} seats on a PUBLISHED trip.
+     * Transitions the trip to FULL when all vehicle capacity is claimed.
+     */
+    public void reserveSeats(int count) {
+        if (count <= 0) {
+            throw new IllegalArgumentException("seatCount must be > 0");
+        }
+        if (this.status != TripStatus.PUBLISHED) {
+            throw new IllegalStateException("Trip is not bookable in status: " + this.status);
+        }
+        int capacity = this.vehicle.getSeatCapacity();
+        if (this.bookedSeats + count > capacity) {
+            throw new IllegalStateException(
+                    "Insufficient available seats: requested " + count
+                            + ", available " + (capacity - this.bookedSeats));
+        }
+        this.bookedSeats += count;
+        if (this.bookedSeats == capacity) {
+            this.status = TripStatus.FULL;
+        }
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * Releases {@code count} previously held seats upon final cancellation or no-show.
+     * Transitions a FULL trip back to PUBLISHED when seats become available again.
+     */
+    public void releaseSeats(int count) {
+        if (count <= 0) {
+            throw new IllegalArgumentException("seatCount must be > 0");
+        }
+        if (this.bookedSeats < count) {
+            throw new IllegalStateException("Cannot release more seats than currently booked");
+        }
+        this.bookedSeats -= count;
+        if (this.status == TripStatus.FULL && this.bookedSeats < this.vehicle.getSeatCapacity()) {
+            this.status = TripStatus.PUBLISHED;
+        }
+        this.updatedAt = Instant.now();
+    }
+
     // ------------------------------------------------------------------ accessors
 
     public Long getId()                  { return id; }
@@ -125,6 +175,9 @@ public class Trip {
     public BigDecimal getFare()          { return fare; }
     public String getNote()              { return note; }
     public TripStatus getStatus()        { return status; }
+    public int getBookedSeats()          { return bookedSeats; }
+    public int getAvailableSeats()       { return vehicle.getSeatCapacity() - bookedSeats; }
+    public long getVersion()             { return version; }
     public Instant getCreatedAt()        { return createdAt; }
     public Instant getUpdatedAt()        { return updatedAt; }
 }
