@@ -5,6 +5,7 @@ export default function PassengerLayout() {
       <Stack.Screen name="index" />
       <Stack.Screen name="results" />
       <Stack.Screen name="trip/[tripId]" />
+      <Stack.Screen name="bookings" />
     </Stack>
   );
 }

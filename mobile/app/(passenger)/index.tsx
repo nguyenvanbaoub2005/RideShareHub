@@ -117,6 +117,16 @@ export default function PassengerHomeScreen() {
           </Pressable>
         </View>
 
+        {/* My Bookings (SP2-P2-03) */}
+        <Pressable
+          style={styles.bookingsBtn}
+          onPress={() => router.push('/(passenger)/bookings')}
+          accessibilityRole="button"
+          accessibilityLabel="Xem danh sách vé đã đặt"
+        >
+          <Text style={styles.bookingsBtnText}>🎫  Vé đã đặt của tôi</Text>
+        </Pressable>
+
         {/* Sign-out */}
         <Pressable
           style={[styles.logoutBtn, loading && { opacity: 0.5 }]}
@@ -183,6 +193,16 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   searchBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  bookingsBtn: {
+    backgroundColor: '#1e293b',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#6366f1',
+  },
+  bookingsBtnText: { color: '#a5b4fc', fontSize: 15, fontWeight: '700' },
   logoutBtn: {
     backgroundColor: '#1e293b',
     borderRadius: 14,

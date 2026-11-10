@@ -139,6 +139,120 @@ export async function searchTrips(
   return result.data;
 }
 
+// ---- Booking endpoints (SP2-P2-01 / SP2-P2-02 / SP2-P2-03) -----------------
+
+export type BookingStatus =
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'PICKED_UP'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'NO_SHOW';
+
+export interface LocationInput {
+  label: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+export interface CreateBookingPayload {
+  seatCount: number;
+  pickup: LocationInput;
+  dropoff: LocationInput;
+}
+
+export interface BookingRecord {
+  id: number;
+  bookingCode: string;
+  passengerId: number;
+  passengerName: string;
+  tripId: number;
+  routeName: string;
+  origin: string;
+  destination: string;
+  departureTime: string;
+  companyName: string;
+  vehiclePlate: string;
+  vehicleType: string;
+  driverName: string;
+  seatCount: number;
+  pickup: LocationInput;
+  dropoff: LocationInput;
+  fareEstimate: number;
+  status: BookingStatus;
+  cancelReason?: string | null;
+  confirmedAt?: string | null;
+  cancelledAt?: string | null;
+  createdAt: string;
+}
+
+export function generateIdempotencyKey(prefix = 'bk'): string {
+  const rand = Math.random().toString(36).substring(2, 10);
+  const ts = Date.now().toString(36);
+  return `${prefix}-${ts}-${rand}`;
+}
+
+export async function createBooking(
+  accessToken: string,
+  tripId: number,
+  payload: CreateBookingPayload,
+  idempotencyKey: string,
+): Promise<BookingRecord> {
+  const result = await request<BookingRecord>(
+    `/api/v1/trips/${tripId}/bookings`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Idempotency-Key': idempotencyKey,
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+  return result.data;
+}
+
+export async function getMyBookings(
+  accessToken: string,
+): Promise<BookingRecord[]> {
+  const result = await request<BookingRecord[]>('/api/v1/bookings/me', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return result.data;
+}
+
+export async function getBooking(
+  accessToken: string,
+  bookingId: number,
+): Promise<BookingRecord> {
+  const result = await request<BookingRecord>(`/api/v1/bookings/${bookingId}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return result.data;
+}
+
+export async function cancelBooking(
+  accessToken: string,
+  bookingId: number,
+  idempotencyKey: string,
+  reason?: string,
+): Promise<BookingRecord> {
+  const result = await request<BookingRecord>(
+    `/api/v1/bookings/${bookingId}/cancel`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Idempotency-Key': idempotencyKey,
+      },
+      body: JSON.stringify({ reason: reason ?? null }),
+    },
+  );
+  return result.data;
+}
+
 // ---- Error -----------------------------------------------------------------
 
 export class ApiError extends Error {

@@ -78,9 +78,7 @@ public class TripSearchService {
      */
     private TripSearchResult toResult(Trip trip, int minSeats) {
         int capacity      = trip.getVehicle().getSeatCapacity();
-        // Until SP2-P2-01 Booking is built, bookedSeats = 0.
-        // The column will be replaced by a live count in that sprint.
-        int bookedSeats   = 0;
+        int bookedSeats   = trip.getBookedSeats();
         int availableSeats = capacity - bookedSeats;
 
         if (availableSeats < minSeats) {
@@ -111,7 +109,7 @@ public class TripSearchService {
      * Applies a demand-based surcharge when available capacity is low.
      * Result is rounded to 2 decimal places (HALF_UP).
      */
-    BigDecimal estimateFare(BigDecimal baseFare, int capacity, int bookedSeats) {
+    public BigDecimal estimateFare(BigDecimal baseFare, int capacity, int bookedSeats) {
         if (capacity <= 0) {
             return baseFare;
         }
