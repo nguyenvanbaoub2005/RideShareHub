@@ -6,6 +6,7 @@ import com.ridesharehub.trip.dto.TripResponse;
 import com.ridesharehub.trip.service.TripService;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,8 +31,10 @@ public class DriverTripController {
     }
 
     @GetMapping("/trips")
+    @PreAuthorize("hasRole('DRIVER')")
     public ResponseEntity<ApiResponse<List<TripResponse>>> listMyTrips(
             @AuthenticationPrincipal AuthPrincipal principal) {
         return ResponseEntity.ok(ApiResponse.success(tripService.listDriverTrips(principal)));
     }
 }
+
