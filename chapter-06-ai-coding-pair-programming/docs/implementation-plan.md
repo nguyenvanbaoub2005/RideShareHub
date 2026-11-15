@@ -87,17 +87,21 @@ An Admin can approve a company; the approved company can manage operational reso
 | SP1-P1-02 | Person 1 | Backend | Company registration/approval and Vehicle API | 2 | SP1-P1-01, SP1-P2-01 | High |
 | SP1-P1-03 | Person 1 | Web | Admin company approval flow | 2 | SP1-P1-02 | High |
 | SP1-P1-04 | Person 1 | Web | Company profile and Vehicle flow | 2 | SP1-P1-02 | Medium |
+| SP1-P1-05 | Person 1 | Web | Passenger registration and login page | 1 | SP1-P1-01 | Medium |
 | SP1-P2-01 | Person 2 | Platform | Project skeleton, PostgreSQL, Flyway, Docker and baseline CI | 2 | — | High |
 | SP1-P2-02 | Person 2 | Backend | Driver, Route and Trip APIs | 3 | SP1-P1-01, SP1-P1-02 | High |
 | SP1-P2-03 | Person 2 | Web | Driver/Route and Trip management flow | 2 | SP1-P2-02 | High |
 | SP1-P2-04 | Person 2 | Mobile | Expo skeleton, secure session boundary and role routing | 1 | SP1-P1-01 | Medium |
+| SP1-P2-05 | Person 2 | Mobile | Driver home screen: assigned trip list and session routing | 1 | SP1-P2-04, SP1-P2-02 | High |
 
 ### Required details
 
 - `SP1-P2-01`: Java/Node/Python builds, PostgreSQL health check, initial schema migration, secrets template and GitHub Actions without production deployment.
 - `SP1-P1-01`: login/register, password hashing, JWT/session verification and all four roles; tests prove unauthorized/forbidden behavior.
 - `SP1-P1-02`: `PENDING → APPROVED/REJECTED`; unapproved company cannot publish; Vehicle capacity/status constraints.
+- `SP1-P1-05`: web login/register form for PASSENGER and TRANSPORT_COMPANY roles; validation, error state and redirect to role home.
 - `SP1-P2-02`: ownership checks, Driver/Vehicle schedule-conflict validation and Trip publication rules.
+- `SP1-P2-05`: Driver sees list of ASSIGNED trips after login; empty state; tap navigates to trip detail (SP3-P2-03 provides execution).
 
 ## 8. Sprint 2 — Search, Fare and Capacity-safe Booking
 
@@ -111,10 +115,13 @@ Passenger can find a Trip, see its fare, create/cancel a Booking and the backend
 | SP2-P1-02 | Person 1 | Backend | V1 fare estimation | 1 | SP2-P1-01 | Medium |
 | SP2-P1-03 | Person 1 | Mobile | Passenger search/filter flow | 2 | SP1-P2-04, SP2-P1-01 | High |
 | SP2-P1-04 | Person 1 | Mobile | Trip detail and fare flow | 2 | SP2-P1-02, SP2-P1-03 | Medium |
+| SP2-P1-05 | Person 1 | Web | Company Trip list and per-Trip Booking overview | 2 | SP1-P1-04, SP2-P2-01 | High |
 | SP2-P2-01 | Person 2 | Backend | Booking lifecycle and seat release | 3 | SP1-P2-02, SP2-P1-02 | High |
 | SP2-P2-02 | Person 2 | Backend | Atomic capacity, locking and idempotency | 2 | SP2-P2-01 | High |
 | SP2-P2-03 | Person 2 | Mobile | Booking creation/status/cancellation flow | 2 | SP2-P1-04, SP2-P2-01 | High |
 | SP2-P2-04 | Person 2 | Testing | Concurrent Booking integration test | 1 | SP2-P2-02 | High |
+| SP2-P2-05 | Person 2 | Mobile | Passenger Booking history screen | 1 | SP2-P2-03 | Medium |
+| SP2-P2-06 | Person 2 | Backend | Company Booking notification: polling endpoint for new Bookings | 1 | SP2-P2-01 | Low |
 
 ### Required details
 
@@ -122,6 +129,9 @@ Passenger can find a Trip, see its fare, create/cancel a Booking and the backend
 - Capacity claim/release occurs in the same authoritative PostgreSQL transaction as Booking state change.
 - The concurrency test starts with two remaining seats and submits two simultaneous two-seat requests; exactly one succeeds and capacity never becomes negative.
 - Confirmation and cancellation policies that remain open must be represented by explicit configuration/placeholder boundary, not an invented business rule.
+- `SP2-P1-05`: Company sees Trip list with DRAFT/PUBLISHED/FULL status badges; selects a Trip to view Bookings (PENDING/CONFIRMED/CANCELLED) with seat count and passenger name; no Booking mutation from this screen.
+- `SP2-P2-05`: Passenger sees paginated list of own Bookings with status and trip summary; tap opens existing detail from SP2-P2-03.
+- `SP2-P2-06`: Simple REST endpoint `GET /api/v1/companies/{id}/bookings/recent`; pushes are deferred to V2; explicitly marked out-of-scope for WebSocket in V1.
 
 ## 9. Sprint 3 — Shared Stops, Optimization and Realtime Execution
 
@@ -135,10 +145,13 @@ Multiple Booking stops produce a reviewable route proposal; Driver executes vali
 | SP3-P1-02 | Person 1 | Optimizer | FastAPI optimization service and constraint tests | 3 | SP3-P1-01 | High |
 | SP3-P1-03 | Person 1 | Backend | Optimizer integration and route-proposal review | 2 | SP3-P1-02 | High |
 | SP3-P1-04 | Person 1 | Mobile | Passenger planned-stop/ETA view | 1 | SP3-P1-03 | Medium |
+| SP3-P1-05 | Person 1 | Backend | Route-proposal review API (ACCEPT/REJECT by company) | 1 | SP3-P1-03 | High |
 | SP3-P2-01 | Person 2 | Backend | Driver Trip lifecycle and stop transitions | 3 | SP1-P2-02, SP3-P1-01 | High |
+| SP3-P2-01b | Person 2 | Backend | Driver assignment accept/reject API and state enforcement | 1 | SP3-P2-01 | High |
 | SP3-P2-02 | Person 2 | Backend | WebSocket, location ingestion and snapshot API | 2 | SP3-P2-01 | High |
 | SP3-P2-03 | Person 2 | Mobile | Driver Trip, stop and GPS flow | 2 | SP1-P2-04, SP3-P2-01, SP3-P2-02 | High |
 | SP3-P2-04 | Person 2 | Mobile | Passenger live tracking, stale state and reconnect | 1 | SP3-P2-02 | High |
+| SP3-P2-05 | Person 2 | Mobile | Driver accept/reject assignment screen | 1 | SP3-P2-01b, SP3-P2-03 | High |
 
 ### Required details
 
@@ -146,6 +159,9 @@ Multiple Booking stops produce a reviewable route proposal; Driver executes vali
 - Pickup completion precedes related dropoff; stale/duplicate commands cannot reverse completed state.
 - Optimizer output is stored as `PROPOSED`, reviewed as `ACCEPTED/REJECTED`, and prior proposals may become `SUPERSEDED`; it never directly mutates Booking state.
 - Realtime connection loss displays stale/disconnected state; reconnect fetches a REST snapshot before resuming events.
+- `SP3-P1-05`: Company reviews optimizer proposal via `POST /trips/{id}/proposals/{pid}/accept` or `/reject`; only PENDING proposals are actionable; rejected proposal does not alter Booking state.
+- `SP3-P2-01b`: `POST /driver/trips/{id}/accept` and `/reject`; only ASSIGNED trips are actionable; enforces driver identity match; rejection returns trip to unassigned (policy boundary — not invented).
+- `SP3-P2-05`: Driver sees pending assignment with trip details; confirms ACCEPT/REJECT with explicit confirmation dialog; result is reflected immediately without requiring app restart.
 
 ## 10. Sprint 4 — Rating, Basic Operations and Release Evidence
 
@@ -157,10 +173,12 @@ The complete journey is demonstrable with rating, basic Admin monitoring, automa
 |---|---|---|---|---:|---|---|
 | SP4-P1-01 | Person 1 | Backend | Completed-Booking rating API | 2 | SP3-P2-01 | Medium |
 | SP4-P1-02 | Person 1 | Web | Basic Admin Trip/Booking monitoring | 2 | SP1-P1-03, SP3-P2-02 | Medium |
+| SP4-P1-02b | Person 1 | Web | Admin Driver and User listing | 1 | SP4-P1-02 | Medium |
 | SP4-P1-03 | Person 1 | Mobile | Passenger rating flow | 1 | SP4-P1-01 | Medium |
 | SP4-P1-04 | Person 1 | Testing | Module regression tests and OpenAPI review | 3 | SP4-P1-01, SP4-P1-02 | High |
+| SP4-P1-04b | Person 1 | Testing | Web component and integration tests (Company, Admin flows) | 2 | SP4-P1-02, SP4-P1-02b | Medium |
 | SP4-P2-01 | Person 2 | Testing | End-to-end core journey | 3 | SP3-P1-03, SP3-P2-04, SP4-P1-01 | High |
-| SP4-P2-02 | Person 2 | DevOps | Docker/CI hardening and clean-environment check | 2 | SP1-P2-01, SP4-P2-01 | High |
+| SP4-P2-02 | Person 2 | DevOps | Docker/CI hardening, optimizer health check and clean-environment check | 2 | SP1-P2-01, SP4-P2-01 | High |
 | SP4-P2-03 | Person 2 | Mobile | Passenger/Driver UI and realtime regression polish | 2 | SP3-P2-03, SP3-P2-04 | Medium |
 | SP4-P2-04 | Person 2 | Optional | Minimal incident/report spike | 1 | SP3-P2-01 | Low |
 
@@ -169,6 +187,9 @@ The complete journey is demonstrable with rating, basic Admin monitoring, automa
 - Basic monitoring is limited to accepted operational visibility; it does not introduce analytics requirements.
 - Incident/report is a stretch task and must be skipped before any High-priority task is reduced.
 - CI build/test is execution evidence only for checks actually run; E2E must exercise Company → Trip → Search → Booking → Proposal → Driver → Pickup/Dropoff → Complete → Rating.
+- `SP4-P1-02b`: Admin sees paginated list of Users (all roles) and Drivers with status; read-only; no bulk action or mutation from this screen (R-13).
+- `SP4-P1-04b`: Cover Company approval flow (approve/reject renders correct state), Vehicle CRUD form validation and Trip list page; use testing-library/react; no screenshot-only tests.
+- `SP4-P2-02`: Optimizer FastAPI container must be included in Compose with health check; CI Pytest must run against the container; clean `docker compose up` from scratch must reproduce a passing build.
 
 ## 11. CI Build Matrix
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { LoginPage } from './auth/LoginPage';
+import { RegisterPage } from './auth/RegisterPage';
 import { AdminCompanyListPage } from './admin/AdminCompanyListPage';
 import { AdminCompanyDetailPage } from './admin/AdminCompanyDetailPage';
 import { CompanyProfilePage } from './company/CompanyProfilePage';
@@ -13,6 +14,7 @@ import { RouteListPage } from './company/RouteListPage';
 import { RouteFormPage } from './company/RouteFormPage';
 import { TripListPage } from './company/TripListPage';
 import { TripFormPage } from './company/TripFormPage';
+import { TripBookingOverviewPage } from './company/TripBookingOverviewPage';
 
 /** Redirects unauthenticated to /login */
 function RequireAdmin() {
@@ -45,6 +47,7 @@ export function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
 
         <Route element={<RequireAdmin />}>
           <Route path="/admin/companies" element={<AdminCompanyListPage />} />
@@ -65,6 +68,7 @@ export function App() {
           <Route path="/company/trips" element={<TripListPage />} />
           <Route path="/company/trips/new" element={<TripFormPage />} />
           <Route path="/company/trips/:tripId/edit" element={<TripFormPage />} />
+          <Route path="/company/trips/:tripId/bookings" element={<TripBookingOverviewPage />} />
         </Route>
 
         <Route path="*" element={<DefaultRedirect />} />

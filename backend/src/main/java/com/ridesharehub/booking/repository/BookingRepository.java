@@ -61,5 +61,18 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             ORDER BY b.createdAt ASC
             """)
     List<Booking> findAllByTrip_IdOrderByCreatedAtAsc(@Param("tripId") Long tripId);
+
+    @Query("""
+            SELECT b FROM Booking b
+              JOIN FETCH b.passenger p
+              JOIN FETCH b.trip t
+              JOIN FETCH t.route r
+              JOIN FETCH t.company c
+              JOIN FETCH t.vehicle v
+              JOIN FETCH t.driver d
+            WHERE t.company.id = :companyId
+            ORDER BY b.createdAt DESC
+            """)
+    List<Booking> findRecentByCompanyId(@Param("companyId") Long companyId);
 }
 

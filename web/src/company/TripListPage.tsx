@@ -139,6 +139,13 @@ export function TripListPage() {
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <Link
+                          id={`view-bookings-${t.id}`}
+                          className="btn btn--ghost btn--sm"
+                          to={`/company/trips/${t.id}/bookings`}
+                        >
+                          Đặt chỗ
+                        </Link>
                         {t.status === 'DRAFT' && (
                           <>
                             <button

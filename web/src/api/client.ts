@@ -17,6 +17,21 @@ export type VehicleStatus = 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'INACTIVE';
 export type DriverStatus = 'AVAILABLE' | 'ON_TRIP' | 'INACTIVE';
 export type TripStatus = 'DRAFT' | 'PUBLISHED' | 'FULL' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
+export interface BookingRecord {
+  id: number;
+  bookingCode: string;
+  tripId: number;
+  passengerId: number;
+  passengerName: string;
+  seatCount: number;
+  pickupAddress: string;
+  dropoffAddress: string;
+  estimatedFare: number;
+  status: 'PENDING' | 'CONFIRMED' | 'PICKED_UP' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+  cancelReason: string | null;
+  createdAt: string;
+}
+
 export interface CompanyResponse {
   id: number;
   name: string;
@@ -150,6 +165,12 @@ export const authApi = {
     request<void>('/api/v1/auth/logout', {
       method: 'POST',
       body: JSON.stringify({ accessToken }),
+    }),
+
+  register: (email: string, password: string, fullName: string, role: 'PASSENGER' | 'TRANSPORT_COMPANY') =>
+    request<void>('/api/v1/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, fullName, role }),
     }),
 };
 
@@ -352,4 +373,7 @@ export const tripApi = {
     request<TripResponse>(`/api/v1/companies/${companyId}/trips/${tripId}/cancel`, {
       method: 'POST',
     }),
+
+  listTripBookings: (companyId: number, tripId: number) =>
+    request<BookingRecord[]>(`/api/v1/companies/${companyId}/trips/${tripId}/bookings`),
 };

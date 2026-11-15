@@ -29,6 +29,9 @@ public class Driver {
     @JoinColumn(name = "company_id", nullable = false)
     private TransportCompany company;
 
+    @Column(name = "user_id")
+    private Long userId;
+
     @Column(name = "full_name", nullable = false, length = 150)
     private String fullName;
 
@@ -75,6 +78,7 @@ public class Driver {
     // ------------------------------------------------------------------ accessors
 
     public Long getId()                    { return id; }
+    public Long getUserId()                { return userId; }
     public TransportCompany getCompany()   { return company; }
     public String getFullName()            { return fullName; }
     public String getPhone()               { return phone; }

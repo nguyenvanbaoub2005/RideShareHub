@@ -61,6 +61,16 @@ public class BookingController {
                 bookingService.listTripBookings(tripId, principal)));
     }
 
+    /** SP2-P2-06: GET /api/v1/companies/{companyId}/trips/{tripId}/bookings — alias used by web client */
+    @GetMapping("/companies/{companyId}/trips/{tripId}/bookings")
+    public ResponseEntity<ApiResponse<List<BookingResponse>>> listCompanyTripBookings(
+            @PathVariable Long companyId,
+            @PathVariable Long tripId,
+            @AuthenticationPrincipal AuthPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.success(
+                bookingService.listTripBookings(tripId, principal)));
+    }
+
     @GetMapping("/bookings/me")
     public ResponseEntity<ApiResponse<List<BookingResponse>>> listMyBookings(
             @AuthenticationPrincipal AuthPrincipal principal) {
