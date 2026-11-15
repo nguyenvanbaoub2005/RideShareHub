@@ -74,6 +74,17 @@ public class TripService {
                 .toList();
     }
 
+    /** GET /api/v1/driver/trips — authenticated DRIVER lists own trips */
+    @Transactional(readOnly = true)
+    public List<TripResponse> listDriverTrips(AuthPrincipal principal) {
+        Driver driver = driverRepository.findByUserId(principal.userId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Driver profile not found for this user"));
+        return tripRepository.findAllByDriver_IdOrderByDepartureTimeAsc(driver.getId()).stream()
+                .map(TripResponse::from)
+                .toList();
+    }
+
     /** GET /api/v1/companies/{companyId}/trips/{tripId} */
     @Transactional(readOnly = true)
     public TripResponse getTrip(Long companyId, Long tripId, AuthPrincipal principal) {

@@ -1,5 +1,5 @@
 import React, { FormEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import { ErrorAlert } from '../components/Alert';
@@ -85,6 +85,12 @@ export function LoginPage() {
             {loading ? <Spinner size="sm" /> : 'Đăng nhập'}
           </button>
         </form>
+        <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '0.875rem', color: 'var(--text-sub)' }}>
+          Chưa có tài khoản?{' '}
+          <Link to="/register" style={{ color: 'var(--primary)', fontWeight: 500 }}>
+            Đăng ký
+          </Link>
+        </p>
       </div>
     </div>
   );

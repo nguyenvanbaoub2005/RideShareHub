@@ -16,6 +16,8 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
 
     List<Trip> findAllByCompany_Id(Long companyId);
 
+    List<Trip> findAllByDriver_IdOrderByDepartureTimeAsc(Long driverId);
+
     /**
      * Acquires a row-level pessimistic write lock on the Trip row for
      * capacity-safe booking creation and cancellation (SP2-P2-02 / ADR-002).

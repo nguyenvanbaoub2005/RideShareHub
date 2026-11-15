@@ -30,10 +30,10 @@ import com.ridesharehub.trip.service.TripService;
  *   <li>PUT  /api/v1/companies/{id}/trips/{tid}              — update (DRAFT only)
  *   <li>POST /api/v1/companies/{id}/trips/{tid}/publish      — DRAFT → PUBLISHED
  *   <li>POST /api/v1/companies/{id}/trips/{tid}/cancel       — → CANCELLED
+ *   <li>GET  /api/v1/driver/trips                            — SP1-P2-05: driver lists own trips
  * </ul>
  */
 @RestController
-@RequestMapping("/api/v1/companies/{companyId}/trips")
 public class TripController {
 
     private final TripService tripService;
