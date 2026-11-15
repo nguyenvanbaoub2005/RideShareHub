@@ -2,6 +2,8 @@ package com.ridesharehub.booking.entity;
 
 import com.ridesharehub.auth.entity.User;
 import com.ridesharehub.booking.enums.BookingStatus;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.ridesharehub.trip.entity.Trip;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -76,6 +78,7 @@ public class Booking {
     private BigDecimal estimatedFare;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false, columnDefinition = "booking_status")
     private BookingStatus status = BookingStatus.PENDING;
 

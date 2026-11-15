@@ -17,6 +17,8 @@ import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
 import com.ridesharehub.company.enums.CompanyStatus;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "transport_companies")
@@ -61,6 +63,7 @@ public class TransportCompany {
     private String logoUrl;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false, columnDefinition = "company_status")
     private CompanyStatus status = CompanyStatus.PENDING;
 

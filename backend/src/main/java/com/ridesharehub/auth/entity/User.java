@@ -11,6 +11,8 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import com.ridesharehub.auth.enums.UserRole;
 import com.ridesharehub.auth.enums.UserStatus;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "users")
@@ -29,11 +31,13 @@ public class User {
     private String fullName;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "user_role")
     private UserRole role;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "user_status")
     private UserStatus status = UserStatus.ACTIVE;
 
     @Column(name = "created_at", nullable = false)

@@ -19,6 +19,8 @@ import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
 import com.ridesharehub.trip.enums.TripStatus;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "trips")
@@ -54,6 +56,7 @@ public class Trip {
     private String note;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false, columnDefinition = "trip_status")
     private TripStatus status = TripStatus.DRAFT;
 

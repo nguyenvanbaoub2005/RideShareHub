@@ -13,6 +13,8 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import com.ridesharehub.company.enums.VehicleStatus;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "vehicles")
@@ -48,6 +50,7 @@ public class Vehicle {
     private String imageUrl;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false, columnDefinition = "vehicle_status")
     private VehicleStatus status = VehicleStatus.AVAILABLE;
 
