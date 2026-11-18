@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+
 export default function PassengerLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -6,6 +7,7 @@ export default function PassengerLayout() {
       <Stack.Screen name="results" />
       <Stack.Screen name="trip/[tripId]" />
       <Stack.Screen name="bookings" />
+      <Stack.Screen name="account" />
     </Stack>
   );
 }

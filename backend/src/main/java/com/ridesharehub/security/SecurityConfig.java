@@ -1,5 +1,6 @@
 package com.ridesharehub.security;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
@@ -31,7 +32,9 @@ public class SecurityConfig {
                         .authenticationEntryPoint((request, response, exception) -> error(response, 401, "Unauthenticated"))
                         .accessDeniedHandler((request, response, exception) -> error(response, 403, "Forbidden")))
                 .authorizeHttpRequests(auth -> auth
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers("/error").permitAll()
                         .requestMatchers(request -> request.getRequestURI().startsWith("/api/v1/auth/"))
                         .permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
@@ -47,7 +50,7 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173", "http://127.0.0.1:5173"));
+        config.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key"));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

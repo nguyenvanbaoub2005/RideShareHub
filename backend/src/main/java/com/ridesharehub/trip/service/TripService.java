@@ -61,7 +61,7 @@ public class TripService {
         assertNoDriverConflict(driver.getId(), null, req.departureTime());
 
         Trip trip = tripRepository.save(
-                new Trip(route, company, vehicle, driver, req.departureTime(), req.fare()));
+                new Trip(route, company, vehicle, driver, req.departureTime(), req.fare(), req.note()));
         return TripResponse.from(trip);
     }
 

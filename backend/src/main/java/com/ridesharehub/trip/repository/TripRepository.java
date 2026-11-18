@@ -42,15 +42,27 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
             SELECT COUNT(t) > 0 FROM Trip t
             WHERE t.vehicle.id = :vehicleId
               AND t.id <> :excludeTripId
-              AND t.status NOT IN (com.ridesharehub.trip.enums.TripStatus.COMPLETED,
-                                   com.ridesharehub.trip.enums.TripStatus.CANCELLED)
+              AND t.status <> :completedStatus
+              AND t.status <> :cancelledStatus
               AND t.departureTime BETWEEN :from AND :to
             """)
-    boolean existsVehicleConflict(
+    boolean existsVehicleConflictWithStatuses(
             @Param("vehicleId") Long vehicleId,
             @Param("excludeTripId") Long excludeTripId,
             @Param("from") Instant from,
-            @Param("to") Instant to);
+            @Param("to") Instant to,
+            @Param("completedStatus") TripStatus completedStatus,
+            @Param("cancelledStatus") TripStatus cancelledStatus);
+
+    default boolean existsVehicleConflict(
+            Long vehicleId,
+            Long excludeTripId,
+            Instant from,
+            Instant to) {
+        return existsVehicleConflictWithStatuses(
+                vehicleId, excludeTripId, from, to,
+                TripStatus.COMPLETED, TripStatus.CANCELLED);
+    }
 
     /**
      * Detects scheduling conflict for a driver.
@@ -59,17 +71,50 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
             SELECT COUNT(t) > 0 FROM Trip t
             WHERE t.driver.id = :driverId
               AND t.id <> :excludeTripId
-              AND t.status NOT IN (com.ridesharehub.trip.enums.TripStatus.COMPLETED,
-                                   com.ridesharehub.trip.enums.TripStatus.CANCELLED)
+              AND t.status <> :completedStatus
+              AND t.status <> :cancelledStatus
               AND t.departureTime BETWEEN :from AND :to
             """)
-    boolean existsDriverConflict(
+    boolean existsDriverConflictWithStatuses(
             @Param("driverId") Long driverId,
             @Param("excludeTripId") Long excludeTripId,
             @Param("from") Instant from,
-            @Param("to") Instant to);
+            @Param("to") Instant to,
+            @Param("completedStatus") TripStatus completedStatus,
+            @Param("cancelledStatus") TripStatus cancelledStatus);
+
+    default boolean existsDriverConflict(
+            Long driverId,
+            Long excludeTripId,
+            Instant from,
+            Instant to) {
+        return existsDriverConflictWithStatuses(
+                driverId, excludeTripId, from, to,
+                TripStatus.COMPLETED, TripStatus.CANCELLED);
+    }
 
     // ------------------------------------------------------------------ SP2-P1-01: Passenger search
+
+    @Query("""
+            SELECT t FROM Trip t
+              JOIN FETCH t.route r
+              JOIN FETCH t.vehicle v
+              JOIN FETCH t.driver d
+              JOIN FETCH t.company c
+            WHERE t.status = :status
+              AND LOWER(r.origin) LIKE LOWER(CONCAT('%', :origin, '%'))
+              AND LOWER(r.destination) LIKE LOWER(CONCAT('%', :destination, '%'))
+              AND t.departureTime >= :from
+              AND t.departureTime <  :to
+            ORDER BY t.departureTime ASC
+            """)
+    List<Trip> searchByStatus(
+            @Param("status")      TripStatus status,
+            @Param("origin")      String origin,
+            @Param("destination") String destination,
+            @Param("from")        Instant from,
+            @Param("to")          Instant to,
+            Pageable pageable);
 
     /**
      * Searches PUBLISHED trips visible to passengers.
@@ -83,25 +128,18 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
      * @param from        start of day (inclusive), or null to skip
      * @param to          end of day (exclusive), or null to skip
      */
-    @Query("""
-            SELECT t FROM Trip t
-              JOIN FETCH t.route r
-              JOIN FETCH t.vehicle v
-              JOIN FETCH t.driver d
-              JOIN FETCH t.company c
-            WHERE t.status = com.ridesharehub.trip.enums.TripStatus.PUBLISHED
-              AND (:origin IS NULL
-                   OR LOWER(r.origin) LIKE LOWER(CONCAT('%', :origin, '%')))
-              AND (:destination IS NULL
-                   OR LOWER(r.destination) LIKE LOWER(CONCAT('%', :destination, '%')))
-              AND (:from IS NULL OR t.departureTime >= :from)
-              AND (:to   IS NULL OR t.departureTime <  :to)
-            ORDER BY t.departureTime ASC
-            """)
-    List<Trip> searchPublished(
-            @Param("origin")      String origin,
-            @Param("destination") String destination,
-            @Param("from")        Instant from,
-            @Param("to")          Instant to,
-            Pageable pageable);
+    default List<Trip> searchPublished(
+            String origin,
+            String destination,
+            Instant from,
+            Instant to,
+            Pageable pageable) {
+        return searchByStatus(
+                TripStatus.PUBLISHED,
+                origin != null ? origin : "",
+                destination != null ? destination : "",
+                from != null ? from : Instant.EPOCH,
+                to != null ? to : Instant.parse("2100-01-01T00:00:00Z"),
+                pageable);
+    }
 }

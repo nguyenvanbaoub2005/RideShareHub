@@ -1,11 +1,66 @@
+import * as Linking from 'expo-linking';
+import { NativeModules } from 'react-native';
+
 /**
  * API client for RideShareHub backend.
  *
- * Base URL is configurable via EXPO_PUBLIC_API_URL env var.
- * Falls back to localhost:8080 for local development.
+ * Base URL resolution order:
+ * 1. EXPO_PUBLIC_API_URL env var (if set)
+ * 2. LAN IP / host extracted from Metro / Expo Go runtime URL (port 8080)
+ * 3. Fallback to http://localhost:8080
  */
+function extractDevHost(rawUrl?: string | null): string | null {
+  if (!rawUrl) return null;
+  const match = rawUrl.match(/^[a-zA-Z0-9+.-]+:\/\/([^:/?#]+)(?::\d+)?/);
+  const host = match?.[1];
+  if (!host) return null;
+  const isIpv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host);
+  if (isIpv4 || host === 'localhost' || host === '127.0.0.1') {
+    return host;
+  }
+  return null;
+}
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080';
+function resolveBaseUrl(): string {
+  const configured = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (configured) {
+    return configured.replace(/\/+$/, '');
+  }
+
+  try {
+    const sourceCode = (NativeModules as { SourceCode?: { scriptURL?: string; getConstants?: () => { scriptURL?: string } } })?.SourceCode;
+    const scriptUrl = sourceCode?.getConstants?.()?.scriptURL ?? sourceCode?.scriptURL;
+    const scriptHost = extractDevHost(scriptUrl);
+    if (scriptHost) {
+      return `http://${scriptHost}:8080`;
+    }
+  } catch {
+    // Ignore if NativeModules.SourceCode is unavailable
+  }
+
+  try {
+    const linkingHost = extractDevHost(Linking.createURL('/'));
+    if (linkingHost) {
+      return `http://${linkingHost}:8080`;
+    }
+  } catch {
+    // Ignore if Linking.createURL is unavailable
+  }
+
+  return 'http://localhost:8080';
+}
+
+export const BASE_URL = resolveBaseUrl();
+
+async function parseJsonSafe(response: Response): Promise<Record<string, any> | null> {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as Record<string, any>;
+  } catch {
+    return null;
+  }
+}
 
 export interface AuthResponse {
   accessToken: string;
@@ -34,10 +89,10 @@ async function request<T>(
     },
   });
 
-  const body = await response.json();
+  const body = await parseJsonSafe(response);
 
   if (!response.ok) {
-    const message = body?.message ?? response.statusText;
+    const message = (typeof body?.message === 'string' && body.message) || response.statusText || `HTTP ${response.status}`;
     throw new ApiError(response.status, message);
   }
 
@@ -107,8 +162,11 @@ export interface TripSearchResult {
   fare: number;
   estimatedFare: number;
   availableSeats: number;
+  seatCapacity?: number;
   vehicleType: string;
+  vehiclePlate?: string;
   driverName: string;
+  companyName?: string;
   status: string;
 }
 
@@ -129,13 +187,44 @@ export async function searchTrips(
   if (params.date) qs.set('date', params.date);
   if (params.minSeats != null) qs.set('minSeats', String(params.minSeats));
 
-  const result = await request<TripSearchResult[]>(
-    `/api/trips/search?${qs.toString()}`,
-    {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${accessToken}` },
+  const response = await fetch(`${BASE_URL}/api/trips/search?${qs.toString()}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
     },
-  );
+  });
+  const body = await parseJsonSafe(response);
+  if (!response.ok) {
+    const message = (typeof body?.message === 'string' && body.message) || response.statusText || `HTTP ${response.status}`;
+    throw new ApiError(response.status, message);
+  }
+  return Array.isArray(body) ? (body as TripSearchResult[]) : (((body as unknown) as ApiResponse<TripSearchResult[]>)?.data ?? []);
+}
+
+// ---- Driver trips (SP1-P2-05) ---------------------------------------------
+
+export interface DriverTripSummary {
+  id: number;
+  routeName?: string;
+  origin: string;
+  destination: string;
+  estimatedMinutes?: number;
+  departureTime: string;
+  vehiclePlate: string;
+  vehicleType?: string;
+  seatCapacity: number;
+  bookedSeats?: number;
+  fare?: number;
+  note?: string | null;
+  status: 'DRAFT' | 'PUBLISHED' | 'FULL' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+}
+
+export async function getDriverTrips(accessToken: string): Promise<DriverTripSummary[]> {
+  const result = await request<DriverTripSummary[]>('/api/v1/driver/trips', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
   return result.data;
 }
 

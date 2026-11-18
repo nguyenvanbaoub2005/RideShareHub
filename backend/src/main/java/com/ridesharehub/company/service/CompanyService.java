@@ -51,9 +51,23 @@ public class CompanyService {
         }
         User owner = userRepository.findById(principal.userId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        TransportCompany company = companyRepository.save(
-                new TransportCompany(owner, req.name(), req.address(),
-                        req.phone(), req.representativeName(), req.businessInformation()));
+        TransportCompany draft = new TransportCompany(owner, req.name(), req.address(),
+                req.phone(), req.representativeName(), req.businessInformation());
+        draft.setContactEmail(owner.getEmail());
+        TransportCompany company = companyRepository.save(draft);
+        return CompanyResponse.from(company);
+    }
+
+    /** GET /api/v1/companies/me — resolves the authenticated TRANSPORT_COMPANY owner's company. */
+    @Transactional(readOnly = true)
+    public CompanyResponse getMyCompany(AuthPrincipal principal) {
+        if (principal.role() != UserRole.TRANSPORT_COMPANY) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only TRANSPORT_COMPANY accounts own a company profile");
+        }
+        TransportCompany company = companyRepository.findByOwner_Id(principal.userId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Company registration not found for this account"));
         return CompanyResponse.from(company);
     }
 

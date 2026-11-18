@@ -9,6 +9,8 @@ import com.ridesharehub.booking.dto.CreateBookingRequest;
 import com.ridesharehub.booking.entity.Booking;
 import com.ridesharehub.booking.enums.BookingStatus;
 import com.ridesharehub.booking.repository.BookingRepository;
+import com.ridesharehub.company.entity.TransportCompany;
+import com.ridesharehub.company.repository.CompanyRepository;
 import com.ridesharehub.security.AuthPrincipal;
 import com.ridesharehub.trip.entity.Trip;
 import com.ridesharehub.trip.enums.TripStatus;
@@ -42,6 +44,7 @@ public class BookingService {
     private final TripRepository tripRepository;
     private final UserRepository userRepository;
     private final TripSearchService tripSearchService;
+    private final CompanyRepository companyRepository;
     private final boolean autoConfirm;
 
     @Autowired
@@ -50,11 +53,13 @@ public class BookingService {
             TripRepository tripRepository,
             UserRepository userRepository,
             TripSearchService tripSearchService,
+            CompanyRepository companyRepository,
             @Value("${booking.policy.auto-confirm:true}") boolean autoConfirm) {
         this.bookingRepository = bookingRepository;
         this.tripRepository = tripRepository;
         this.userRepository = userRepository;
         this.tripSearchService = tripSearchService;
+        this.companyRepository = companyRepository;
         this.autoConfirm = autoConfirm;
     }
 
@@ -62,8 +67,17 @@ public class BookingService {
             BookingRepository bookingRepository,
             TripRepository tripRepository,
             UserRepository userRepository,
+            TripSearchService tripSearchService,
+            boolean autoConfirm) {
+        this(bookingRepository, tripRepository, userRepository, tripSearchService, null, autoConfirm);
+    }
+
+    public BookingService(
+            BookingRepository bookingRepository,
+            TripRepository tripRepository,
+            UserRepository userRepository,
             TripSearchService tripSearchService) {
-        this(bookingRepository, tripRepository, userRepository, tripSearchService, true);
+        this(bookingRepository, tripRepository, userRepository, tripSearchService, null, true);
     }
 
     // ================================================================== Create Booking
@@ -172,6 +186,30 @@ public class BookingService {
         requireTripOperatorOrAdmin(trip, principal);
         return bookingRepository.findAllByTrip_IdOrderByCreatedAtAsc(tripId)
                 .stream()
+                .map(BookingResponse::from)
+                .toList();
+    }
+
+    /** SP2-P2-06: GET /api/v1/companies/{companyId}/bookings/recent */
+    @Transactional(readOnly = true)
+    public List<BookingResponse> listRecentCompanyBookings(Long companyId, AuthPrincipal principal) {
+        requireAuthenticated(principal);
+        if (companyRepository != null) {
+            TransportCompany company = companyRepository.findById(companyId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Company not found"));
+            boolean isAdmin = principal.role() == UserRole.ADMIN;
+            boolean isOwner = company.getOwner().getId().equals(principal.userId());
+            if (!isAdmin && !isOwner) {
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN, "Access denied to this company's bookings");
+            }
+        } else if (principal.role() != UserRole.ADMIN && principal.role() != UserRole.TRANSPORT_COMPANY) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Access denied to this company's bookings");
+        }
+        return bookingRepository.findRecentByCompanyId(companyId)
+                .stream()
+                .limit(20)
                 .map(BookingResponse::from)
                 .toList();
     }

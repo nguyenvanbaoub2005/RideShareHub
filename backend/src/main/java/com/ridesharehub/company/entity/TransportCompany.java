@@ -129,6 +129,11 @@ public class TransportCompany {
         this.updatedAt = Instant.now();
     }
 
+    public void setContactEmail(String contactEmail) {
+        this.contactEmail = contactEmail;
+        this.updatedAt = Instant.now();
+    }
+
     public boolean isApproved() { return status == CompanyStatus.APPROVED; }
 
     // ------------------------------------------------------------------ accessors

@@ -17,16 +17,30 @@ export type VehicleStatus = 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'INACTIVE';
 export type DriverStatus = 'AVAILABLE' | 'ON_TRIP' | 'INACTIVE';
 export type TripStatus = 'DRAFT' | 'PUBLISHED' | 'FULL' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
+export interface LocationDto {
+  label: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
 export interface BookingRecord {
   id: number;
   bookingCode: string;
-  tripId: number;
   passengerId: number;
   passengerName: string;
+  tripId: number;
+  routeName?: string;
+  origin?: string;
+  destination?: string;
+  departureTime?: string;
+  companyName?: string;
+  vehiclePlate?: string;
+  vehicleType?: string;
+  driverName?: string;
   seatCount: number;
-  pickupAddress: string;
-  dropoffAddress: string;
-  estimatedFare: number;
+  pickup: LocationDto;
+  dropoff: LocationDto;
+  fareEstimate: number;
   status: 'PENDING' | 'CONFIRMED' | 'PICKED_UP' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
   cancelReason: string | null;
   createdAt: string;
@@ -89,11 +103,14 @@ export interface TripResponse {
   routeName: string;
   origin: string;
   destination: string;
+  estimatedMinutes?: number;
   companyId: number;
   companyName: string;
   vehicleId: number;
   vehiclePlate: string;
+  vehicleType?: string;
   seatCapacity: number;
+  bookedSeats?: number;
   driverId: number;
   driverName: string;
   departureTime: string;
@@ -168,7 +185,7 @@ export const authApi = {
     }),
 
   register: (email: string, password: string, fullName: string, role: 'PASSENGER' | 'TRANSPORT_COMPANY') =>
-    request<void>('/api/v1/auth/register', {
+    request<AuthResponse>('/api/v1/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password, fullName, role }),
     }),
@@ -191,8 +208,26 @@ export const adminApi = {
 
 // ------------------------------------------------------------------ company (owner)
 export const companyApi = {
+  getMyCompanyProfile: () =>
+    request<CompanyResponse>('/api/v1/companies/me'),
+
+  registerCompany: (data: {
+    name: string;
+    phone: string;
+    address: string;
+    representativeName: string;
+    businessInformation: string;
+  }) =>
+    request<CompanyResponse>('/api/v1/companies/registrations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   getMyCompany: (companyId: number) =>
     request<CompanyResponse>(`/api/v1/companies/${companyId}`),
+
+  listRecentBookings: (companyId: number) =>
+    request<BookingRecord[]>(`/api/v1/companies/${companyId}/bookings/recent`),
 
   listVehicles: (companyId: number) =>
     request<VehicleResponse[]>(`/api/v1/companies/${companyId}/vehicles`),
@@ -251,6 +286,8 @@ export const driverApi = {
       fullName: string;
       phone: string;
       licenseNumber: string;
+      email?: string;
+      password?: string;
     },
   ) =>
     request<DriverResponse>(`/api/v1/companies/${companyId}/drivers`, {

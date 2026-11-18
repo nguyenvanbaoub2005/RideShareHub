@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { companyApi, type VehicleResponse } from '../api/client';
+import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/Badge';
 import { ErrorAlert } from '../components/Alert';
+import { Icon } from '../components/Icon';
 import { PageSpinner } from '../components/Spinner';
 import { useAuth } from '../auth/AuthContext';
+import { buildCompanyNav, initialsOf } from './companyNav';
 
 const STATUS_LABELS: Record<string, string> = {
   AVAILABLE: 'Sẵn sàng',
@@ -14,17 +17,22 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function VehicleListPage() {
-  const { session, logout } = useAuth();
+  const { session } = useAuth();
   const navigate = useNavigate();
   const companyId = session?.companyId;
 
   const [vehicles, setVehicles] = useState<VehicleResponse[]>([]);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!companyId) { navigate('/company/profile', { replace: true }); return; }
+    if (!companyId) {
+      navigate('/company/profile', { replace: true });
+      return;
+    }
     companyApi
       .listVehicles(companyId)
       .then(setVehicles)
@@ -35,9 +43,10 @@ export function VehicleListPage() {
   async function handleStatusChange(vehicleId: number, newStatus: VehicleResponse['status']) {
     if (!companyId) return;
     setStatusLoading(vehicleId);
+    setError(null);
     try {
       const updated = await companyApi.updateVehicleStatus(companyId, vehicleId, newStatus);
-      setVehicles(vs => vs.map(v => v.id === vehicleId ? updated : v));
+      setVehicles(vs => vs.map(v => (v.id === vehicleId ? updated : v)));
     } catch {
       setError('Không thể cập nhật trạng thái xe.');
     } finally {
@@ -45,46 +54,141 @@ export function VehicleListPage() {
     }
   }
 
-  async function handleLogout() { await logout(); navigate('/login', { replace: true }); }
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = vehicles.filter(v => {
+    const matchStatus = statusFilter === 'ALL' || v.status === statusFilter;
+    if (!matchStatus) return false;
+    if (!normalizedQuery) return true;
+    return [v.plateNumber, v.vehicleType, v.brand ?? '', v.model ?? '']
+      .join(' ')
+      .toLowerCase()
+      .includes(normalizedQuery);
+  });
 
-  if (loading) return <PageSpinner />;
+  const availableCount = vehicles.filter(v => v.status === 'AVAILABLE').length;
+  const unavailableCount = vehicles.filter(v => v.status !== 'AVAILABLE').length;
+  const companyName = session?.companyName ?? 'Nhà xe';
 
   return (
-    <div className="shell">
-      <header className="topbar">
-        <div className="topbar__brand">
-          <span className="logo-icon">🚌</span>
-          <span className="logo-text">RideShareHub</span>
-          <span className="topbar__role-badge">Nhà xe</span>
-        </div>
-        <nav className="topbar__nav">
-          <Link id="nav-profile" className="topbar__link" to="/company/profile">Hồ sơ</Link>
-          <Link id="nav-vehicles-active" className="topbar__link topbar__link--active" to="/company/vehicles">Đội xe</Link>
-          <Link id="nav-drivers" className="topbar__link" to="/company/drivers">Tài xế</Link>
-          <Link id="nav-routes" className="topbar__link" to="/company/routes">Tuyến đường</Link>
-          <Link id="nav-trips" className="topbar__link" to="/company/trips">Chuyến xe</Link>
-        </nav>
-        <button id="vehicles-logout" className="btn btn--ghost btn--sm" onClick={handleLogout}>Đăng xuất</button>
-      </header>
+    <AppShell
+      role="COMPANY"
+      breadcrumbs={['Không gian nhà xe', 'Quản lý phương tiện']}
+      eyebrow="Quản lý nguồn lực"
+      title="Đội xe"
+      subtitle="Quản lý thông tin phương tiện, sức chứa và trạng thái sẵn sàng vận hành."
+      navItems={buildCompanyNav('vehicles', true)}
+      profileName={companyName}
+      profileSub="Đối tác đã xác minh"
+      profileInitials={initialsOf(companyName)}
+      topbarStatus={<Badge value="APPROVED" />}
+      logoutId="vehicles-logout"
+      headerAction={
+        <Link id="add-vehicle-btn" className="btn btn--primary" to="/company/vehicles/new">
+          <Icon name="plus" size={16} />
+          <span>Thêm phương tiện</span>
+        </Link>
+      }
+    >
+      {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
-      <main className="page-content">
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">Đội xe</h1>
-            <p className="page-sub">Quản lý và theo dõi trạng thái phương tiện</p>
+      <div className="metrics-grid metrics-grid--3">
+        <div className="metric-card">
+          <div className="metric-card__top">
+            <span className="metric-card__label">Tổng phương tiện</span>
+            <span className="metric-card__icon metric-card__icon--blue">
+              <Icon name="car" size={18} />
+            </span>
           </div>
-          <Link id="add-vehicle-btn" className="btn btn--primary" to="/company/vehicles/new">
-            + Thêm xe
-          </Link>
+          <div className="metric-card__value">{vehicles.length}</div>
+          <div className="metric-card__note">Phương tiện thuộc quyền quản lý</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-card__top">
+            <span className="metric-card__label">Sẵn sàng vận hành</span>
+            <span className="metric-card__icon metric-card__icon--teal">
+              <Icon name="check" size={18} />
+            </span>
+          </div>
+          <div className="metric-card__value">{availableCount}</div>
+          <div className="metric-card__note">Có thể gán vào chuyến mới</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-card__top">
+            <span className="metric-card__label">Đang dùng / Bảo dưỡng</span>
+            <span className="metric-card__icon metric-card__icon--amber">
+              <Icon name="settings" size={18} />
+            </span>
+          </div>
+          <div className="metric-card__value">{unavailableCount}</div>
+          <div className="metric-card__note">Theo dõi lịch bảo dưỡng định kỳ</div>
+        </div>
+      </div>
+
+      <section className="panel">
+        <div className="panel__head">
+          <div>
+            <h2 className="panel__title">Danh sách phương tiện</h2>
+            <p className="panel__sub">{companyName} · {filtered.length} phương tiện</p>
+          </div>
         </div>
 
-        {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
+        <div className="toolbar" style={{ marginTop: 0 }}>
+          <div className="search-box">
+            <span className="search-box__icon">
+              <Icon name="search" size={16} />
+            </span>
+            <input
+              type="search"
+              className="form__input"
+              aria-label="Tìm phương tiện"
+              placeholder="Tìm biển số, loại xe, hãng / mẫu xe..."
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+            />
+          </div>
+          <select
+            aria-label="Lọc trạng thái xe"
+            className="form__select"
+            style={{ width: 'auto', minWidth: 180 }}
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+          >
+            <option value="ALL">Tất cả trạng thái</option>
+            {Object.entries(STATUS_LABELS).map(([val, label]) => (
+              <option key={val} value={val}>{label}</option>
+            ))}
+          </select>
+          {(query || statusFilter !== 'ALL') && (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => { setQuery(''); setStatusFilter('ALL'); }}
+            >
+              Xóa bộ lọc
+            </button>
+          )}
+        </div>
 
-        {vehicles.length === 0 ? (
+        {loading ? (
+          <PageSpinner />
+        ) : filtered.length === 0 ? (
           <div className="empty-state">
-            <span className="empty-state__icon">🚐</span>
-            <p>Chưa có xe nào. Bắt đầu bằng cách thêm xe mới.</p>
-            <Link className="btn btn--primary" to="/company/vehicles/new">Thêm xe đầu tiên</Link>
+            <span className="empty-state__icon">
+              <Icon name="car" size={28} />
+            </span>
+            <div className="empty-state__title">
+              {vehicles.length === 0 ? 'Chưa có phương tiện nào' : 'Không tìm thấy phương tiện phù hợp'}
+            </div>
+            <p className="empty-state__body">
+              {vehicles.length === 0
+                ? 'Bắt đầu bằng cách thêm xe đầu tiên để phục vụ lên lịch chuyến.'
+                : 'Thử thay đổi từ khóa hoặc xóa bộ lọc.'}
+            </p>
+            {vehicles.length === 0 && (
+              <Link className="btn btn--primary" to="/company/vehicles/new">
+                Thêm xe đầu tiên
+              </Link>
+            )}
           </div>
         ) : (
           <div className="table-wrap">
@@ -94,25 +198,27 @@ export function VehicleListPage() {
                   <th>Biển số</th>
                   <th>Loại xe</th>
                   <th>Hãng / Mẫu</th>
-                  <th>Số ghế</th>
+                  <th className="data-table__center">Số ghế</th>
                   <th>Trạng thái</th>
                   <th>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
-                {vehicles.map(v => (
+                {filtered.map(v => (
                   <tr key={v.id} id={`vehicle-row-${v.id}`}>
                     <td className="data-table__plate">{v.plateNumber}</td>
                     <td>{v.vehicleType}</td>
                     <td>{[v.brand, v.model].filter(Boolean).join(' ') || '—'}</td>
-                    <td className="data-table__center">{v.seatCapacity}</td>
+                    <td className="data-table__center">{v.seatCapacity} chỗ</td>
                     <td>
                       <select
                         id={`status-select-${v.id}`}
                         className="status-select"
                         value={v.status}
                         disabled={statusLoading === v.id}
-                        onChange={e => handleStatusChange(v.id, e.target.value as VehicleResponse['status'])}
+                        onChange={e =>
+                          handleStatusChange(v.id, e.target.value as VehicleResponse['status'])
+                        }
                         aria-label={`Trạng thái xe ${v.plateNumber}`}
                       >
                         {Object.entries(STATUS_LABELS).map(([val, label]) => (
@@ -124,9 +230,10 @@ export function VehicleListPage() {
                       <Link
                         id={`edit-vehicle-${v.id}`}
                         className="btn btn--ghost btn--sm"
+                        style={{ color: 'var(--primary)' }}
                         to={`/company/vehicles/${v.id}/edit`}
                       >
-                        Sửa
+                        Chỉnh sửa
                       </Link>
                     </td>
                   </tr>
@@ -135,7 +242,7 @@ export function VehicleListPage() {
             </table>
           </div>
         )}
-      </main>
-    </div>
+      </section>
+    </AppShell>
   );
 }

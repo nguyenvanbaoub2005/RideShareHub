@@ -77,6 +77,11 @@ public class Trip {
 
     public Trip(Route route, TransportCompany company, Vehicle vehicle, Driver driver,
             Instant departureTime, BigDecimal fare) {
+        this(route, company, vehicle, driver, departureTime, fare, null);
+    }
+
+    public Trip(Route route, TransportCompany company, Vehicle vehicle, Driver driver,
+            Instant departureTime, BigDecimal fare, String note) {
         if (fare.compareTo(BigDecimal.ZERO) < 0) throw new IllegalArgumentException("fare must be >= 0");
         this.route = route;
         this.company = company;
@@ -84,6 +89,7 @@ public class Trip {
         this.driver = driver;
         this.departureTime = departureTime;
         this.fare = fare;
+        this.note = (note != null && !note.isBlank()) ? note.strip() : null;
     }
 
     // ------------------------------------------------------------------ mutators

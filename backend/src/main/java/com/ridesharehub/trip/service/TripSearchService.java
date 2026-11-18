@@ -98,8 +98,11 @@ public class TripSearchService {
                 trip.getFare(),
                 estimatedFare,
                 availableSeats,
+                capacity,
                 trip.getVehicle().getVehicleType(),
+                trip.getVehicle().getPlateNumber(),
                 trip.getDriver().getFullName(),
+                trip.getCompany().getName(),
                 trip.getStatus()
         );
     }

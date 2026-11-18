@@ -1,24 +1,49 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { tripApi, type TripResponse } from '../api/client';
+import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/Badge';
 import { ErrorAlert, SuccessAlert } from '../components/Alert';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { Icon } from '../components/Icon';
 import { PageSpinner } from '../components/Spinner';
 import { useAuth } from '../auth/AuthContext';
+import { buildCompanyNav, initialsOf } from './companyNav';
+
+const STATUS_OPTIONS: [string, string][] = [
+  ['ALL', 'Tất cả trạng thái'],
+  ['DRAFT', 'Bản nháp'],
+  ['PUBLISHED', 'Đã mở bán'],
+  ['FULL', 'Đã hết chỗ'],
+  ['IN_PROGRESS', 'Đang chạy'],
+  ['COMPLETED', 'Đã hoàn thành'],
+  ['CANCELLED', 'Đã huỷ'],
+];
+
+function formatVND(amount: number): string {
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+}
 
 export function TripListPage() {
-  const { session, logout } = useAuth();
+  const { session } = useAuth();
   const navigate = useNavigate();
   const companyId = session?.companyId;
 
   const [trips, setTrips] = useState<TripResponse[]>([]);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
+  const [publishTarget, setPublishTarget] = useState<TripResponse | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<TripResponse | null>(null);
 
   useEffect(() => {
-    if (!companyId) { navigate('/company/profile', { replace: true }); return; }
+    if (!companyId) {
+      navigate('/company/profile', { replace: true });
+      return;
+    }
     tripApi
       .listTrips(companyId)
       .then(setTrips)
@@ -26,119 +51,236 @@ export function TripListPage() {
       .finally(() => setLoading(false));
   }, [companyId, navigate]);
 
-  async function handlePublish(tripId: number) {
-    if (!companyId) return;
-    setActionLoadingId(tripId);
+  async function confirmPublish() {
+    if (!companyId || !publishTarget) return;
+    setActionLoadingId(publishTarget.id);
     setError(null);
     try {
-      const updated = await tripApi.publishTrip(companyId, tripId);
-      setTrips(ts => ts.map(t => t.id === tripId ? updated : t));
-      setSuccess('Đã xuất bản chuyến xe thành công. Hành khách đã có thể tìm thấy chuyến.');
+      const updated = await tripApi.publishTrip(companyId, publishTarget.id);
+      setTrips(ts => ts.map(t => (t.id === publishTarget.id ? updated : t)));
+      setSuccess(`Đã xuất bản chuyến ${updated.routeName}. Hành khách đã có thể tìm và đặt chỗ.`);
+      setPublishTarget(null);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Không thể xuất bản chuyến này.';
-      setError(msg);
+      setError(err instanceof Error ? err.message : 'Không thể xuất bản chuyến này.');
     } finally {
       setActionLoadingId(null);
     }
   }
 
-  async function handleCancel(tripId: number) {
-    if (!companyId || !window.confirm('Bạn có chắc chắn muốn huỷ chuyến xe này?')) return;
-    setActionLoadingId(tripId);
+  async function confirmCancel() {
+    if (!companyId || !cancelTarget) return;
+    setActionLoadingId(cancelTarget.id);
     setError(null);
     try {
-      const updated = await tripApi.cancelTrip(companyId, tripId);
-      setTrips(ts => ts.map(t => t.id === tripId ? updated : t));
-      setSuccess('Đã huỷ chuyến xe thành công.');
+      const updated = await tripApi.cancelTrip(companyId, cancelTarget.id);
+      setTrips(ts => ts.map(t => (t.id === cancelTarget.id ? updated : t)));
+      setSuccess(`Đã huỷ chuyến ${updated.routeName} thành công.`);
+      setCancelTarget(null);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Không thể huỷ chuyến này.';
-      setError(msg);
+      setError(err instanceof Error ? err.message : 'Không thể huỷ chuyến này.');
     } finally {
       setActionLoadingId(null);
     }
   }
 
-  async function handleLogout() { await logout(); navigate('/login', { replace: true }); }
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = trips
+    .filter(t => {
+      const matchStatus = statusFilter === 'ALL' || t.status === statusFilter;
+      if (!matchStatus) return false;
+      if (!normalizedQuery) return true;
+      return [t.routeName, t.origin, t.destination, t.vehiclePlate, t.driverName, String(t.id)]
+        .join(' ')
+        .toLowerCase()
+        .includes(normalizedQuery);
+    })
+    .sort((a, b) => new Date(b.departureTime).getTime() - new Date(a.departureTime).getTime());
 
-  if (loading) return <PageSpinner />;
+  const publishedCount = trips.filter(t => t.status === 'PUBLISHED' || t.status === 'FULL').length;
+  const activeCount = trips.filter(t => t.status === 'IN_PROGRESS').length;
+  const draftCount = trips.filter(t => t.status === 'DRAFT').length;
+  const companyName = session?.companyName ?? 'Nhà xe';
 
   return (
-    <div className="shell">
-      <header className="topbar">
-        <div className="topbar__brand">
-          <span className="logo-icon">🚌</span>
-          <span className="logo-text">RideShareHub</span>
-          <span className="topbar__role-badge">Nhà xe</span>
-        </div>
-        <nav className="topbar__nav">
-          <Link id="nav-profile" className="topbar__link" to="/company/profile">Hồ sơ</Link>
-          <Link id="nav-vehicles" className="topbar__link" to="/company/vehicles">Đội xe</Link>
-          <Link id="nav-drivers" className="topbar__link" to="/company/drivers">Tài xế</Link>
-          <Link id="nav-routes" className="topbar__link" to="/company/routes">Tuyến đường</Link>
-          <Link id="nav-trips-active" className="topbar__link topbar__link--active" to="/company/trips">Chuyến xe</Link>
-        </nav>
-        <button id="trips-logout" className="btn btn--ghost btn--sm" onClick={handleLogout}>Đăng xuất</button>
-      </header>
+    <AppShell
+      role="COMPANY"
+      breadcrumbs={['Không gian nhà xe', 'Quản lý chuyến đi']}
+      eyebrow="Điều hành vận tải"
+      title="Quản lý chuyến xe (Trips)"
+      subtitle="Tạo lịch chạy, gán phương tiện, tài xế, xuất bản chuyến và theo dõi đặt chỗ."
+      navItems={buildCompanyNav('trips', true)}
+      profileName={companyName}
+      profileSub="Đối tác đã xác minh"
+      profileInitials={initialsOf(companyName)}
+      topbarStatus={<Badge value="APPROVED" />}
+      logoutId="trips-logout"
+      headerAction={
+        <Link id="create-trip-btn" className="btn btn--primary" to="/company/trips/new">
+          <Icon name="plus" size={16} />
+          <span>Tạo chuyến đi</span>
+        </Link>
+      }
+    >
+      {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
+      {success && <SuccessAlert message={success} onDismiss={() => setSuccess(null)} />}
 
-      <main className="page-content">
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">Quản lý chuyến xe (Trips)</h1>
-            <p className="page-sub">Tạo lịch chạy, gán phương tiện, tài xế và xuất bản chuyến xe</p>
+      <div className="metrics-grid">
+        <div className="metric-card">
+          <div className="metric-card__top">
+            <span className="metric-card__label">Tổng chuyến</span>
+            <span className="metric-card__icon metric-card__icon--blue">
+              <Icon name="bus" size={18} />
+            </span>
           </div>
-          <Link id="create-trip-btn" className="btn btn--primary" to="/company/trips/new">
-            + Tạo chuyến mới
-          </Link>
+          <div className="metric-card__value">{trips.length}</div>
+          <div className="metric-card__note">Tất cả chuyến đã lập lịch</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-card__top">
+            <span className="metric-card__label">Đã mở bán</span>
+            <span className="metric-card__icon metric-card__icon--teal">
+              <Icon name="check" size={18} />
+            </span>
+          </div>
+          <div className="metric-card__value">{publishedCount}</div>
+          <div className="metric-card__note">Đang hiển thị cho hành khách</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-card__top">
+            <span className="metric-card__label">Đang chạy</span>
+            <span className="metric-card__icon metric-card__icon--blue">
+              <Icon name="route" size={18} />
+            </span>
+          </div>
+          <div className="metric-card__value">{activeCount}</div>
+          <div className="metric-card__note">Tài xế đang thực hiện hành trình</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-card__top">
+            <span className="metric-card__label">Bản nháp</span>
+            <span className="metric-card__icon metric-card__icon--amber">
+              <Icon name="calendar" size={18} />
+            </span>
+          </div>
+          <div className="metric-card__value">{draftCount}</div>
+          <div className="metric-card__note">Chờ kiểm tra và xuất bản</div>
+        </div>
+      </div>
+
+      <section className="panel">
+        <div className="panel__head">
+          <div>
+            <h2 className="panel__title">Danh sách chuyến đi</h2>
+            <p className="panel__sub">Quản lý lịch vận hành và trạng thái công bố · {filtered.length} chuyến</p>
+          </div>
         </div>
 
-        {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
-        {success && <SuccessAlert message={success} />}
+        <div className="toolbar" style={{ marginTop: 0 }}>
+          <div className="search-box">
+            <span className="search-box__icon">
+              <Icon name="search" size={16} />
+            </span>
+            <input
+              type="search"
+              className="form__input"
+              aria-label="Tìm chuyến đi"
+              placeholder="Tìm tuyến đường, biển số xe, tài xế..."
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+            />
+          </div>
+          <select
+            aria-label="Lọc trạng thái chuyến"
+            className="form__select"
+            style={{ width: 'auto', minWidth: 180 }}
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+          >
+            {STATUS_OPTIONS.map(([val, label]) => (
+              <option key={val} value={val}>{label}</option>
+            ))}
+          </select>
+          {(query || statusFilter !== 'ALL') && (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => { setQuery(''); setStatusFilter('ALL'); }}
+            >
+              Xóa bộ lọc
+            </button>
+          )}
+        </div>
 
-        {trips.length === 0 ? (
+        {loading ? (
+          <PageSpinner />
+        ) : filtered.length === 0 ? (
           <div className="empty-state">
-            <span className="empty-state__icon">🗓️</span>
-            <p>Chưa có chuyến xe nào được tạo. Bắt đầu bằng cách tạo chuyến mới.</p>
-            <Link className="btn btn--primary" to="/company/trips/new">Tạo chuyến đầu tiên</Link>
+            <span className="empty-state__icon">
+              <Icon name="calendar" size={28} />
+            </span>
+            <div className="empty-state__title">
+              {trips.length === 0 ? 'Chưa có chuyến xe nào' : 'Không tìm thấy chuyến phù hợp'}
+            </div>
+            <p className="empty-state__body">
+              {trips.length === 0
+                ? 'Tạo chuyến xe mới từ tuyến đường, phương tiện và tài xế đã có.'
+                : 'Thử từ khóa khác hoặc xóa bộ lọc.'}
+            </p>
+            {trips.length === 0 && (
+              <Link className="btn btn--primary" to="/company/trips/new">
+                Tạo chuyến đầu tiên
+              </Link>
+            )}
           </div>
         ) : (
           <div className="table-wrap">
             <table className="data-table" id="trip-table">
               <thead>
                 <tr>
-                  <th>Tuyến đường</th>
+                  <th>Chuyến / Tuyến</th>
                   <th>Khởi hành</th>
-                  <th>Xe</th>
-                  <th>Tài xế</th>
+                  <th>Xe / Tài xế</th>
+                  <th>Đã đặt / Chỗ</th>
                   <th>Giá vé</th>
-                  <th>Trạng thái</th>
+                  <th>Công bố</th>
                   <th>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
-                {trips.map(t => (
+                {filtered.map(t => (
                   <tr key={t.id} id={`trip-row-${t.id}`}>
                     <td>
                       <div style={{ fontWeight: 600 }}>{t.routeName}</div>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>{t.origin} → {t.destination}</div>
+                      <div style={{ fontSize: 12, color: 'var(--slate-500)', marginTop: 2 }}>
+                        {t.origin} → {t.destination}
+                      </div>
                     </td>
-                    <td>
+                    <td style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
                       {new Date(t.departureTime).toLocaleString('vi-VN', {
-                        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
                       })}
                     </td>
                     <td>
-                      <span className="data-table__plate">{t.vehiclePlate}</span>
-                      <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '6px' }}>({t.seatCapacity} ghế)</span>
+                      <div className="data-table__plate">{t.vehiclePlate}</div>
+                      <div style={{ fontSize: 12, color: 'var(--slate-500)', marginTop: 2 }}>
+                        {t.driverName}
+                      </div>
                     </td>
-                    <td>{t.driverName}</td>
-                    <td style={{ fontWeight: 600, color: '#4f46e5' }}>
-                      {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(t.fare)}
+                    <td style={{ fontSize: 13, fontWeight: 600 }}>
+                      {t.bookedSeats ?? 0} / {t.seatCapacity}
+                    </td>
+                    <td style={{ fontWeight: 600, color: 'var(--primary)' }}>
+                      {formatVND(t.fare)}
                     </td>
                     <td>
                       <Badge value={t.status} />
                     </td>
                     <td>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                         <Link
                           id={`view-bookings-${t.id}`}
                           className="btn btn--ghost btn--sm"
@@ -150,9 +292,10 @@ export function TripListPage() {
                           <>
                             <button
                               id={`publish-trip-${t.id}`}
+                              type="button"
                               className="btn btn--primary btn--sm"
                               disabled={actionLoadingId === t.id}
-                              onClick={() => handlePublish(t.id)}
+                              onClick={() => setPublishTarget(t)}
                             >
                               Xuất bản
                             </button>
@@ -165,28 +308,25 @@ export function TripListPage() {
                             </Link>
                             <button
                               id={`cancel-trip-${t.id}`}
-                              className="btn btn--ghost btn--sm"
-                              style={{ color: '#ef4444' }}
+                              type="button"
+                              className="btn btn--danger-ghost btn--sm"
                               disabled={actionLoadingId === t.id}
-                              onClick={() => handleCancel(t.id)}
+                              onClick={() => setCancelTarget(t)}
                             >
                               Huỷ
                             </button>
                           </>
                         )}
-                        {t.status === 'PUBLISHED' && (
+                        {(t.status === 'PUBLISHED' || t.status === 'FULL') && (
                           <button
                             id={`cancel-trip-${t.id}`}
-                            className="btn btn--ghost btn--sm"
-                            style={{ color: '#ef4444' }}
+                            type="button"
+                            className="btn btn--danger-ghost btn--sm"
                             disabled={actionLoadingId === t.id}
-                            onClick={() => handleCancel(t.id)}
+                            onClick={() => setCancelTarget(t)}
                           >
                             Huỷ chuyến
                           </button>
-                        )}
-                        {(t.status === 'CANCELLED' || t.status === 'COMPLETED') && (
-                          <span style={{ fontSize: '13px', color: '#94a3b8' }}>—</span>
                         )}
                       </div>
                     </td>
@@ -196,7 +336,28 @@ export function TripListPage() {
             </table>
           </div>
         )}
-      </main>
-    </div>
+      </section>
+
+      <ConfirmModal
+        open={!!publishTarget}
+        title="Công bố chuyến đi?"
+        message={`Chuyến "${publishTarget?.routeName ?? ''}" sẽ hiển thị trong kết quả tìm kiếm của hành khách.`}
+        confirmLabel="Công bố chuyến"
+        loading={actionLoadingId === publishTarget?.id}
+        onCancel={() => setPublishTarget(null)}
+        onConfirm={confirmPublish}
+      />
+
+      <ConfirmModal
+        open={!!cancelTarget}
+        destructive
+        title="Huỷ chuyến xe?"
+        message={`Bạn có chắc chắn muốn huỷ chuyến "${cancelTarget?.routeName ?? ''}"?`}
+        confirmLabel="Xác nhận huỷ"
+        loading={actionLoadingId === cancelTarget?.id}
+        onCancel={() => setCancelTarget(null)}
+        onConfirm={confirmCancel}
+      />
+    </AppShell>
   );
 }

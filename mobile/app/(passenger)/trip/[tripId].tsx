@@ -1,15 +1,13 @@
 /**
- * SP2-P1-04: Trip detail screen — fare breakdown and seat info.
- * SP2-P2-03: Booking creation panel — select seatCount, pickup/dropoff,
- *            confirm booking with Idempotency-Key and navigate to My Bookings.
- *
- * Route: /(passenger)/trip/[tripId]?data=<JSON TripSearchResult>
+ * SP2-P1-04 & SP2-P2-03: Trip Detail + Booking Form + PA-10 Success celebration.
  */
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,14 +17,25 @@ import {
 } from 'react-native';
 import {
   ApiError,
-  BookingRecord,
+  type BookingRecord,
   createBooking,
   generateIdempotencyKey,
   type TripSearchResult,
 } from '../../../src/api/client';
 import { useAuth } from '../../../src/session/AuthContext';
 import {
+  AppBar,
+  Card,
+  KeyValueRow,
+  SectionHeading,
+  StatusBadge,
+} from '../../../src/components/UI';
+import { COLORS } from '../../../src/theme/tokens';
+import {
+  formatArrivalTime,
   formatDeparture,
+  formatDuration,
+  formatTimeOnly,
   formatVND,
   seatColor,
   surchargePercent,
@@ -44,23 +53,21 @@ export default function TripDetailScreen() {
     trip = null;
   }
 
-  const [seatCount, setSeatCount] = useState<number>(1);
-  const [pickupLabel, setPickupLabel] = useState<string>('');
-  const [dropoffLabel, setDropoffLabel] = useState<string>('');
-  const [idempotencyKey, setIdempotencyKey] = useState<string>(() =>
-    generateIdempotencyKey('book'),
-  );
-  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [seatCount, setSeatCount] = useState(1);
+  const [pickupLabel, setPickupLabel] = useState('');
+  const [dropoffLabel, setDropoffLabel] = useState('');
+  const [idempotencyKey, setIdempotencyKey] = useState(() => generateIdempotencyKey('book'));
+  const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [createdBooking, setCreatedBooking] = useState<BookingRecord | null>(null);
 
   if (!trip) {
     return (
       <View style={styles.root}>
-        <Pressable onPress={() => router.back()} style={styles.backRow}>
-          <Text style={styles.back}>← Quay lại</Text>
-        </Pressable>
-        <Text style={styles.errorText}>Không tải được thông tin chuyến xe.</Text>
+        <AppBar title="Chi tiết chuyến" onBack={() => router.back()} />
+        <View style={styles.center}>
+          <Text style={styles.errorText}>Không tải được thông tin chuyến xe.</Text>
+        </View>
       </View>
     );
   }
@@ -72,6 +79,8 @@ export default function TripDetailScreen() {
     : trip.availableSeats;
   const maxSelectableSeats = Math.max(1, remainingAfterBooking);
   const totalEstimatedFare = unitFare * seatCount;
+  const totalSeats = trip.seatCapacity ?? Math.max(trip.availableSeats, 1);
+  const occupancyPct = Math.min(100, Math.round(((totalSeats - remainingAfterBooking) / totalSeats) * 100));
 
   function adjustSeats(delta: number) {
     const next = Math.min(maxSelectableSeats, Math.max(1, seatCount + delta));
@@ -100,10 +109,8 @@ export default function TripDetailScreen() {
       setErrorMsg('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
       return;
     }
-
     const pickup = pickupLabel.trim();
     const dropoff = dropoffLabel.trim();
-
     if (!pickup) {
       setErrorMsg('Vui lòng nhập địa điểm đón khách.');
       return;
@@ -123,7 +130,6 @@ export default function TripDetailScreen() {
 
     setSubmitting(true);
     setErrorMsg(null);
-
     try {
       const booking = await createBooking(
         session.accessToken,
@@ -139,7 +145,6 @@ export default function TripDetailScreen() {
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         if (err.statusCode === 409) {
-          // Rotate idempotency key on capacity conflict so user can adjust seat count and retry
           setIdempotencyKey(generateIdempotencyKey('book'));
           setErrorMsg(
             err.message ||
@@ -149,7 +154,6 @@ export default function TripDetailScreen() {
           setErrorMsg(err.message);
         }
       } else {
-        // Keep the same idempotencyKey so network retry is safe against duplicate bookings
         setErrorMsg('Không thể kết nối máy chủ. Bạn có thể bấm xác nhận lại an toàn.');
       }
     } finally {
@@ -157,177 +161,225 @@ export default function TripDetailScreen() {
     }
   }
 
-  return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/* Back */}
-      <Pressable onPress={() => router.back()} style={styles.backRow}>
-        <Text style={styles.back}>← Kết quả tìm kiếm</Text>
-      </Pressable>
-
-      {/* Route hero */}
-      <View style={styles.heroCard}>
-        <Text style={styles.heroRoute}>
-          {trip.origin} → {trip.destination}
-        </Text>
-        <Text style={styles.heroName}>{trip.routeName}</Text>
-        <Text style={styles.heroDep}>{formatDeparture(trip.departureTime)}</Text>
-      </View>
-
-      {/* Info rows */}
-      <View style={styles.section}>
-        <InfoRow label="Tài xế" value={trip.driverName} icon="👤" />
-        <InfoRow label="Loại xe" value={trip.vehicleType} icon="🚌" />
-        <InfoRow label="Thời gian dự kiến" value={`~${trip.estimatedMinutes} phút`} icon="⏱" />
-        <InfoRow
-          label="Ghế còn trống"
-          value={`${remainingAfterBooking} ghế`}
-          icon="💺"
-          valueColor={seatColor(remainingAfterBooking)}
-        />
-      </View>
-
-      {/* Fare card */}
-      <View style={styles.fareCard}>
-        <Text style={styles.fareTitle}>Thông tin giá vé</Text>
-        <View style={styles.fareRow}>
-          <Text style={styles.fareLabel}>Giá niêm yết / ghế</Text>
-          <Text style={styles.fareValue}>{formatVND(trip.fare)}</Text>
-        </View>
-        {pct > 0 ? (
-          <>
-            <View style={styles.fareRow}>
-              <Text style={styles.fareLabel}>Phụ thu nhu cầu cao</Text>
-              <Text style={styles.surchargeValue}>+{pct}%</Text>
+  /* Figma PA-10 Success View */
+  if (createdBooking) {
+    return (
+      <View style={styles.root}>
+        <ScrollView contentContainerStyle={styles.successScroll}>
+          <View style={styles.checkOuter}>
+            <View style={styles.checkInner}>
+              <Text style={styles.checkMark}>✓</Text>
             </View>
-            <View style={[styles.fareRow, styles.fareTotal]}>
-              <Text style={styles.fareTotalLabel}>Đơn giá ước tính / ghế</Text>
-              <Text style={styles.fareTotalValue}>{formatVND(trip.estimatedFare)}</Text>
-            </View>
-            <Text style={styles.fareNote}>
-              * Giá ước tính áp dụng khi chuyến gần đầy chỗ.
-            </Text>
-          </>
-        ) : (
-          <View style={[styles.fareRow, styles.fareTotal]}>
-            <Text style={styles.fareTotalLabel}>Đơn giá áp dụng / ghế</Text>
-            <Text style={styles.fareTotalValue}>{formatVND(trip.fare)}</Text>
           </View>
-        )}
-      </View>
-
-      {/* SP2-P2-03: Booking Form or Confirmation Result */}
-      {createdBooking ? (
-        <View style={styles.successCard}>
-          <Text style={styles.successBadge}>✅ ĐẶT VÉ THÀNH CÔNG</Text>
-          <Text style={styles.successCode}>Mã vé: {createdBooking.bookingCode}</Text>
-          <Text style={styles.successMeta}>
-            Trạng thái: {createdBooking.status} • {createdBooking.seatCount} ghế
-          </Text>
-          <Text style={styles.successMeta}>
-            Đón: {createdBooking.pickup.label}
-          </Text>
-          <Text style={styles.successMeta}>
-            Trả: {createdBooking.dropoff.label}
-          </Text>
-          <Text style={styles.successFare}>
-            Tổng cước: {formatVND(createdBooking.fareEstimate)}
+          <Text style={styles.successHeading}>Đặt chỗ thành công!</Text>
+          <Text style={styles.successSub}>
+            Nhà xe đã nhận yêu cầu của bạn. Hãy có mặt đúng giờ tại điểm đón.
           </Text>
 
-          <Pressable
-            style={styles.manageBtn}
-            onPress={() => router.push('/(passenger)/bookings')}
-            accessibilityRole="button"
-            accessibilityLabel="Xem và quản lý vé đã đặt"
-          >
-            <Text style={styles.manageBtnText}>🎫 Xem danh sách vé / Hủy vé</Text>
-          </Pressable>
+          <View style={styles.ticketCodeBox}>
+            <Text style={styles.ticketCodeLabel}>Mã đặt chỗ</Text>
+            <Text style={styles.ticketCodeValue}>{createdBooking.bookingCode}</Text>
+          </View>
+
+          <Card style={{ width: '100%', marginTop: 16 }}>
+            <View style={styles.successSummaryTop}>
+              <Text style={styles.successRoute}>
+                {createdBooking.origin} → {createdBooking.destination}
+              </Text>
+              <StatusBadge status={createdBooking.status} />
+            </View>
+            <KeyValueRow label="Nhà xe" value={createdBooking.companyName} />
+            <KeyValueRow label="Khởi hành" value={formatDeparture(createdBooking.departureTime)} />
+            <KeyValueRow label="Số ghế" value={`${createdBooking.seatCount} ghế`} />
+            <KeyValueRow label="Điểm đón" value={createdBooking.pickup.label} />
+            <KeyValueRow label="Điểm trả" value={createdBooking.dropoff.label} />
+            <View style={styles.divider} />
+            <KeyValueRow label="Tổng cước" value={formatVND(createdBooking.fareEstimate)} strong />
+          </Card>
+        </ScrollView>
+
+        <View style={styles.footer}>
+          <View style={styles.footerButtons}>
+            <Pressable
+              style={styles.secondaryBtn}
+              onPress={() => router.replace('/(passenger)')}
+            >
+              <Text style={styles.secondaryBtnText}>Trang chủ</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.primaryBtn, { flex: 1 }]}
+              onPress={() => router.replace('/(passenger)/bookings')}
+            >
+              <Text style={styles.primaryBtnText}>Xem chuyến của tôi</Text>
+            </Pressable>
+          </View>
         </View>
-      ) : (
-        <View style={styles.bookingCard}>
-          <Text style={styles.bookingTitle}>Đặt chỗ trên chuyến này</Text>
+      </View>
+    );
+  }
 
-          {/* Seat count stepper */}
+  return (
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <AppBar
+        title="Chi tiết chuyến"
+        sub={`${trip.origin} → ${trip.destination}`}
+        onBack={() => router.back()}
+      />
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Operator Card */}
+        <Card>
+          <View style={styles.operatorRow}>
+            <View style={styles.navyBadge}>
+              <Text style={styles.navyBadgeText}>NX</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.operatorName}>{trip.companyName ?? trip.routeName}</Text>
+              <Text style={styles.operatorMeta}>
+                {trip.vehicleType}
+                {trip.vehiclePlate ? ` · ${trip.vehiclePlate}` : ''} · Tài xế {trip.driverName}
+              </Text>
+            </View>
+            <StatusBadge status={trip.status} label="Đã xác minh" />
+          </View>
+        </Card>
+
+        {/* Schedule Card */}
+        <Card>
+          <SectionHeading>{`Lịch trình · ${formatDeparture(trip.departureTime)}`}</SectionHeading>
+          <View style={styles.timelineRow}>
+            <View>
+              <Text style={styles.timeBig}>{formatTimeOnly(trip.departureTime)}</Text>
+              <Text style={styles.citySub}>{trip.origin}</Text>
+            </View>
+            <View style={styles.midTimeline}>
+              <Text style={styles.durationText}>{formatDuration(trip.estimatedMinutes)}</Text>
+              <View style={styles.dashedLine} />
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.timeBig}>
+                {formatArrivalTime(trip.departureTime, trip.estimatedMinutes)}
+              </Text>
+              <Text style={styles.citySub}>{trip.destination}</Text>
+            </View>
+          </View>
+        </Card>
+
+        {/* Seat Availability Card */}
+        <Card>
+          <SectionHeading>Chỗ trống</SectionHeading>
+          <View style={styles.seatRow}>
+            <Text style={[styles.seatRemain, { color: seatColor(remainingAfterBooking) }]}>
+              {remainingAfterBooking}
+              <Text style={styles.seatTotal}> / {totalSeats} chỗ</Text>
+            </Text>
+            <Text style={styles.seatBooked}>Đã đặt {Math.max(0, totalSeats - remainingAfterBooking)}</Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${occupancyPct}%` }]} />
+          </View>
+        </Card>
+
+        {/* Fare Breakdown Card */}
+        <Card>
+          <SectionHeading>Thông tin giá vé</SectionHeading>
+          <KeyValueRow label="Giá niêm yết / ghế" value={formatVND(trip.fare)} />
+          {pct > 0 ? (
+            <KeyValueRow label="Phụ thu nhu cầu cao" value={`+${pct}%`} />
+          ) : null}
+          <View style={styles.divider} />
+          <KeyValueRow label="Đơn giá áp dụng / ghế" value={formatVND(unitFare)} strong />
+          {pct > 0 ? (
+            <Text style={styles.fareNote}>* Giá ước tính áp dụng khi chuyến gần đầy chỗ.</Text>
+          ) : null}
+        </Card>
+
+        {/* Booking Form Card */}
+        <Card>
+          <SectionHeading>Đặt chỗ trên chuyến này</SectionHeading>
+
           <View style={styles.stepperRow}>
-            <Text style={styles.fieldLabel}>Số lượng ghế</Text>
-            <View style={styles.stepperControls}>
+            <View>
+              <Text style={styles.fieldTitle}>Số lượng ghế</Text>
+              <Text style={styles.fieldSub}>Còn {remainingAfterBooking} chỗ trống</Text>
+            </View>
+            <View style={styles.stepper}>
               <Pressable
-                style={[
-                  styles.stepBtn,
-                  (seatCount <= 1 || submitting) && styles.stepBtnDisabled,
-                ]}
+                style={[styles.stepBtn, styles.stepBtnMinus, (seatCount <= 1 || submitting) && { opacity: 0.4 }]}
                 onPress={() => adjustSeats(-1)}
                 disabled={seatCount <= 1 || submitting}
                 accessibilityRole="button"
                 accessibilityLabel="Giảm số ghế"
               >
-                <Text style={styles.stepBtnText}>−</Text>
+                <Text style={styles.stepMinusText}>−</Text>
               </Pressable>
-              <Text style={styles.seatCountValue}>{seatCount}</Text>
+              <Text style={styles.stepCount}>{seatCount}</Text>
               <Pressable
                 style={[
                   styles.stepBtn,
-                  (seatCount >= maxSelectableSeats || submitting) &&
-                    styles.stepBtnDisabled,
+                  styles.stepBtnPlus,
+                  (seatCount >= maxSelectableSeats || submitting) && { opacity: 0.4 },
                 ]}
                 onPress={() => adjustSeats(1)}
                 disabled={seatCount >= maxSelectableSeats || submitting}
                 accessibilityRole="button"
                 accessibilityLabel="Tăng số ghế"
               >
-                <Text style={styles.stepBtnText}>+</Text>
+                <Text style={styles.stepPlusText}>+</Text>
               </Pressable>
             </View>
           </View>
 
-          {/* Pickup Input */}
-          <Text style={styles.inputLabel}>Điểm đón ({trip.origin})</Text>
+          <Text style={styles.inputLabel}>Điểm đón ({trip.origin}) *</Text>
           <TextInput
             style={styles.input}
             placeholder={`VD: 123 Nguyễn Văn Linh, ${trip.origin}`}
-            placeholderTextColor="#475569"
+            placeholderTextColor={COLORS.slate400}
             value={pickupLabel}
             onChangeText={handlePickupChange}
             editable={!submitting}
           />
 
-          {/* Dropoff Input */}
-          <Text style={styles.inputLabel}>Điểm trả ({trip.destination})</Text>
+          <Text style={styles.inputLabel}>Điểm trả ({trip.destination}) *</Text>
           <TextInput
             style={styles.input}
             placeholder={`VD: 45 Lê Lợi, ${trip.destination}`}
-            placeholderTextColor="#475569"
+            placeholderTextColor={COLORS.slate400}
             value={dropoffLabel}
             onChangeText={handleDropoffChange}
             editable={!submitting}
           />
 
-          {/* Total Fare Preview */}
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>
-              Tổng tạm tính ({seatCount} ghế)
-            </Text>
-            <Text style={styles.totalAmount}>
-              {formatVND(totalEstimatedFare)}
-            </Text>
-          </View>
+          <Text style={styles.payNote}>
+            Thanh toán trực tiếp cho tài xế khi lên xe. Ứng dụng chưa thu tiền trực tuyến.
+          </Text>
 
-          {/* Error Banner */}
           {errorMsg ? (
             <View style={styles.errorBox}>
-              <Text style={styles.errorBoxText}>⚠️ {errorMsg}</Text>
+              <Text style={styles.errorBoxText}>{errorMsg}</Text>
             </View>
           ) : null}
+        </Card>
+      </ScrollView>
 
-          {/* Confirm Button */}
+      {/* Sticky Footer */}
+      <View style={styles.footer}>
+        <View style={styles.footerInner}>
+          <View>
+            <Text style={styles.footerSub}>Tạm tính ({seatCount} chỗ)</Text>
+            <Text style={styles.footerPrice}>{formatVND(totalEstimatedFare)}</Text>
+          </View>
           <Pressable
             style={[
-              styles.confirmBtn,
-              (submitting || remainingAfterBooking <= 0) &&
-                styles.confirmBtnDisabled,
+              styles.primaryBtn,
+              { flex: 1 },
+              (submitting || remainingAfterBooking <= 0) && { opacity: 0.5 },
             ]}
             onPress={handleConfirmBooking}
             disabled={submitting || remainingAfterBooking <= 0}
@@ -335,209 +387,193 @@ export default function TripDetailScreen() {
             accessibilityLabel="Xác nhận đặt vé"
           >
             {submitting ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#ffffff" />
             ) : (
-              <Text style={styles.confirmBtnText}>
-                {remainingAfterBooking <= 0
-                  ? 'Hết ghế trống'
-                  : 'Xác nhận đặt vé'}
+              <Text style={styles.primaryBtnText}>
+                {remainingAfterBooking <= 0 ? 'Hết ghế trống' : 'Xác nhận đặt chỗ'}
               </Text>
             )}
           </Pressable>
         </View>
-      )}
-    </ScrollView>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
-
-function InfoRow({
-  label,
-  value,
-  icon,
-  valueColor,
-}: {
-  label: string;
-  value: string;
-  icon: string;
-  valueColor?: string;
-}) {
-  return (
-    <View style={infoStyles.row}>
-      <Text style={infoStyles.icon}>{icon}</Text>
-      <Text style={infoStyles.label}>{label}</Text>
-      <Text style={[infoStyles.value, valueColor ? { color: valueColor } : {}]}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-const infoStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
-  },
-  icon: { fontSize: 18, marginRight: 10 },
-  label: { flex: 1, color: '#94a3b8', fontSize: 14 },
-  value: { color: '#f1f5f9', fontSize: 14, fontWeight: '600' },
-});
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a' },
-  content: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 48 },
-  backRow: { marginBottom: 20 },
-  back: { color: '#6366f1', fontSize: 14 },
-  errorText: { color: '#ef4444', textAlign: 'center', marginTop: 48 },
+  root: { flex: 1, backgroundColor: COLORS.canvas },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  errorText: { color: COLORS.danger, fontSize: 15 },
+  scrollContent: { padding: 16, gap: 14, paddingBottom: 28 },
 
-  heroCard: {
-    backgroundColor: '#6366f1',
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 20,
+  operatorRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  navyBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.navy,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  heroRoute: { color: '#fff', fontSize: 22, fontWeight: '800' },
-  heroName: { color: '#c7d2fe', fontSize: 13, marginTop: 4 },
-  heroDep: { color: '#e0e7ff', fontSize: 15, marginTop: 10, fontWeight: '600' },
+  navyBadgeText: { color: '#ffffff', fontWeight: '800', fontSize: 14 },
+  operatorName: { fontSize: 15, fontWeight: '700', color: COLORS.navy },
+  operatorMeta: { fontSize: 12, color: COLORS.slate500, marginTop: 2 },
 
-  section: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    paddingHorizontal: 20,
-    marginBottom: 20,
+  timelineRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  timeBig: { fontSize: 22, fontWeight: '800', color: COLORS.navy },
+  citySub: { fontSize: 12, color: COLORS.slate500, marginTop: 2 },
+  midTimeline: { flex: 1, alignItems: 'center' },
+  durationText: { fontSize: 11, color: COLORS.slate500, marginBottom: 4 },
+  dashedLine: {
+    width: '100%',
+    borderTopWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: COLORS.slate300,
   },
 
-  fareCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
+  seatRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  seatRemain: { fontSize: 22, fontWeight: '800' },
+  seatTotal: { fontSize: 13, fontWeight: '500', color: COLORS.slate500 },
+  seatBooked: { fontSize: 12, color: COLORS.slate500 },
+  progressTrack: {
+    marginTop: 10,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.slate100,
+    overflow: 'hidden',
   },
-  fareTitle: { color: '#f1f5f9', fontSize: 16, fontWeight: '700', marginBottom: 16 },
-  fareRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  fareLabel: { color: '#94a3b8', fontSize: 14 },
-  fareValue: { color: '#f1f5f9', fontSize: 14 },
-  surchargeValue: { color: '#f59e0b', fontSize: 14, fontWeight: '600' },
-  fareTotal: {
-    borderTopWidth: 1,
-    borderTopColor: '#334155',
-    paddingTop: 10,
-    marginTop: 4,
-  },
-  fareTotalLabel: { color: '#f1f5f9', fontSize: 15, fontWeight: '700' },
-  fareTotalValue: { color: '#6366f1', fontSize: 18, fontWeight: '800' },
-  fareNote: { color: '#64748b', fontSize: 11, lineHeight: 16, marginTop: 8 },
+  progressFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 4 },
 
-  bookingCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  bookingTitle: {
-    color: '#f1f5f9',
-    fontSize: 17,
-    fontWeight: '700',
-    marginBottom: 16,
-  },
+  divider: { height: 1, backgroundColor: COLORS.line, marginVertical: 8 },
+  fareNote: { fontSize: 11, color: COLORS.slate500, marginTop: 6 },
+
   stepperRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 18,
+    marginBottom: 16,
   },
-  fieldLabel: { color: '#cbd5e1', fontSize: 14, fontWeight: '600' },
-  stepperControls: { flexDirection: 'row', alignItems: 'center' },
-  stepBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#334155',
+  fieldTitle: { fontSize: 15, fontWeight: '700', color: COLORS.navy },
+  fieldSub: { fontSize: 12, color: COLORS.slate500, marginTop: 2 },
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: COLORS.canvas,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 999,
+    padding: 4,
+  },
+  stepBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  stepBtnMinus: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.line },
+  stepBtnPlus: { backgroundColor: COLORS.primary },
+  stepMinusText: { fontSize: 18, fontWeight: '600', color: COLORS.navy },
+  stepPlusText: { fontSize: 18, fontWeight: '700', color: '#ffffff' },
+  stepCount: { minWidth: 22, textAlign: 'center', fontSize: 16, fontWeight: '800', color: COLORS.navy },
+
+  inputLabel: { fontSize: 13, fontWeight: '600', color: COLORS.navy, marginBottom: 6, marginTop: 10 },
+  input: {
+    backgroundColor: COLORS.canvas,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 46,
+    fontSize: 14,
+    color: COLORS.navy,
+  },
+  payNote: { fontSize: 12, color: COLORS.slate500, marginTop: 12, lineHeight: 18 },
+  errorBox: {
+    marginTop: 12,
+    backgroundColor: COLORS.dangerSoft,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: 12,
+    padding: 12,
+  },
+  errorBoxText: { color: COLORS.danger, fontSize: 13, fontWeight: '500' },
+
+  footer: {
+    backgroundColor: COLORS.surface,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.line,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 24,
+  },
+  footerInner: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  footerButtons: { flexDirection: 'row', gap: 12 },
+  footerSub: { fontSize: 11, color: COLORS.slate500 },
+  footerPrice: { fontSize: 19, fontWeight: '800', color: COLORS.primary },
+  primaryBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  primaryBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+  secondaryBtn: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 12,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  secondaryBtnText: { color: COLORS.navy, fontSize: 15, fontWeight: '700' },
+
+  /* PA-10 Success */
+  successScroll: {
+    paddingHorizontal: 20,
+    paddingTop: 64,
+    paddingBottom: 24,
+    alignItems: 'center',
+  },
+  checkOuter: {
+    width: 108,
+    height: 108,
+    borderRadius: 54,
+    backgroundColor: 'rgba(22,163,74,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepBtnDisabled: { opacity: 0.4 },
-  stepBtnText: { color: '#f1f5f9', fontSize: 18, fontWeight: '700' },
-  seatCountValue: {
-    color: '#f1f5f9',
-    fontSize: 17,
+  checkInner: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: COLORS.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkMark: { color: '#ffffff', fontSize: 36, fontWeight: '800' },
+  successHeading: { fontSize: 25, fontWeight: '800', color: COLORS.navy, marginTop: 18 },
+  successSub: { fontSize: 14, color: COLORS.slate500, textAlign: 'center', marginTop: 8, lineHeight: 20 },
+  ticketCodeBox: {
+    width: '100%',
+    backgroundColor: COLORS.navy,
+    borderRadius: 20,
+    padding: 18,
+    marginTop: 22,
+    alignItems: 'center',
+  },
+  ticketCodeLabel: { color: COLORS.slate300, fontSize: 12 },
+  ticketCodeValue: {
+    color: COLORS.teal,
+    fontSize: 22,
     fontWeight: '800',
-    minWidth: 36,
-    textAlign: 'center',
+    letterSpacing: 1.5,
+    marginTop: 4,
   },
-  inputLabel: {
-    color: '#94a3b8',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: '#f1f5f9',
-    fontSize: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  totalRow: {
+  successSummaryTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#334155',
-    paddingTop: 14,
-    marginTop: 4,
-    marginBottom: 16,
+    marginBottom: 8,
   },
-  totalLabel: { color: '#cbd5e1', fontSize: 14, fontWeight: '600' },
-  totalAmount: { color: '#10b981', fontSize: 19, fontWeight: '800' },
-  errorBox: {
-    backgroundColor: '#450a0a',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#ef4444',
-  },
-  errorBoxText: { color: '#fca5a5', fontSize: 13, lineHeight: 18 },
-  confirmBtn: {
-    backgroundColor: '#6366f1',
-    borderRadius: 14,
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  confirmBtnDisabled: { opacity: 0.5 },
-  confirmBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-  successCard: {
-    backgroundColor: '#064e3b',
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#10b981',
-  },
-  successBadge: { color: '#34d399', fontSize: 14, fontWeight: '800', marginBottom: 8 },
-  successCode: { color: '#ecfdf5', fontSize: 18, fontWeight: '800', marginBottom: 6 },
-  successMeta: { color: '#a7f3d0', fontSize: 13, marginBottom: 4 },
-  successFare: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  manageBtn: {
-    backgroundColor: '#10b981',
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  manageBtnText: { color: '#064e3b', fontSize: 14, fontWeight: '800' },
+  successRoute: { fontSize: 16, fontWeight: '700', color: COLORS.navy },
 });

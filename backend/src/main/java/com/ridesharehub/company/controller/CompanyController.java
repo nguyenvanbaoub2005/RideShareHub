@@ -54,6 +54,12 @@ public class CompanyController {
                 .body(ApiResponse.created(body));
     }
 
+    @GetMapping("/me")
+    ResponseEntity<ApiResponse<CompanyResponse>> getMyCompany(
+            @AuthenticationPrincipal AuthPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.success(companyService.getMyCompany(principal)));
+    }
+
     @GetMapping("/registrations")
     ResponseEntity<ApiResponse<List<CompanyResponse>>> listRegistrations() {
         return ResponseEntity.ok(ApiResponse.success(companyService.listRegistrations()));

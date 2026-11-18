@@ -1,41 +1,29 @@
 /**
- * Root layout — role-based routing gate.
- *
- * Session states:
- *   undefined  → still loading from AsyncStorage → show splash
- *   null       → not logged in → redirect to /login
- *   Session    → logged in → redirect to role-specific home
- *
- * Role routing:
- *   PASSENGER         → /(passenger)
- *   TRANSPORT_COMPANY → /(company)
- *   DRIVER            → /(driver)   [placeholder — SP3-P2-03]
- *   ADMIN             → /(admin)    [placeholder — SP4-P1-02 web]
+ * Root layout — role-based routing gate & Figma PA-01 Splash.
  */
 
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { AuthProvider, useAuth } from '../src/session/AuthContext';
+import { BrandLogo } from '../src/components/UI';
+import { COLORS } from '../src/theme/tokens';
 
-// Inner component — has access to auth context
 function RootNavigator() {
   const { session } = useAuth();
   const router = useRouter();
   const segments = useSegments();
 
   useEffect(() => {
-    if (session === undefined) return; // still loading
+    if (session === undefined) return;
 
     const inAuth = segments[0] === 'login' || segments[0] === 'register';
 
     if (session === null) {
-      // Not logged in → go to login
       if (!inAuth) router.replace('/login');
       return;
     }
 
-    // Logged in → route to role home
     if (inAuth || !segments[0]) {
       switch (session.role) {
         case 'PASSENGER':
@@ -48,7 +36,6 @@ function RootNavigator() {
           router.replace('/(driver)');
           break;
         case 'ADMIN':
-          // Admin uses web app — mobile shows minimal placeholder
           router.replace('/(admin)');
           break;
         default:
@@ -57,12 +44,20 @@ function RootNavigator() {
     }
   }, [session, segments]);
 
-  // Splash while loading session from AsyncStorage
   if (session === undefined) {
     return (
       <View style={styles.splash}>
-        <Text style={styles.splashBrand}>RIDESHAREHUB</Text>
-        <ActivityIndicator color="#6366f1" style={{ marginTop: 24 }} />
+        <BrandLogo size={88} inverted />
+        <Text style={styles.splashBrand}>RideShareHub</Text>
+        <Text style={styles.splashTag}>Đi chung thông minh, tiết kiệm mỗi chuyến</Text>
+        <View style={styles.cityRow}>
+          {['Đà Nẵng', 'Huế', 'Hội An', 'Quảng Nam'].map(c => (
+            <View key={c} style={styles.cityChip}>
+              <Text style={styles.cityText}>{c}</Text>
+            </View>
+          ))}
+        </View>
+        <ActivityIndicator color={COLORS.teal} style={{ marginTop: 32 }} />
       </View>
     );
   }
@@ -79,7 +74,6 @@ function RootNavigator() {
   );
 }
 
-// Root layout wraps everything in AuthProvider
 export default function RootLayout() {
   return (
     <AuthProvider>
@@ -91,14 +85,38 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   splash: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: COLORS.navy,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 32,
   },
   splashBrand: {
-    color: '#6366f1',
-    fontSize: 20,
+    color: COLORS.surface,
+    fontSize: 30,
     fontWeight: '800',
-    letterSpacing: 4,
+    letterSpacing: -0.5,
+    marginTop: 22,
   },
+  splashTag: {
+    color: COLORS.slate300,
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  cityRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 20,
+  },
+  cityChip: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  cityText: { color: COLORS.slate300, fontSize: 11, fontWeight: '600' },
 });

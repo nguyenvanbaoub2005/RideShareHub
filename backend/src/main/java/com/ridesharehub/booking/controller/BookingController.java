@@ -71,6 +71,15 @@ public class BookingController {
                 bookingService.listTripBookings(tripId, principal)));
     }
 
+    /** SP2-P2-06: GET /api/v1/companies/{companyId}/bookings/recent — polling endpoint for new bookings */
+    @GetMapping("/companies/{companyId}/bookings/recent")
+    public ResponseEntity<ApiResponse<List<BookingResponse>>> listRecentCompanyBookings(
+            @PathVariable Long companyId,
+            @AuthenticationPrincipal AuthPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.success(
+                bookingService.listRecentCompanyBookings(companyId, principal)));
+    }
+
     @GetMapping("/bookings/me")
     public ResponseEntity<ApiResponse<List<BookingResponse>>> listMyBookings(
             @AuthenticationPrincipal AuthPrincipal principal) {

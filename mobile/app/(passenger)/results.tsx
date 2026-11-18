@@ -1,13 +1,9 @@
 /**
- * SP2-P1-03: Search results screen.
- * SP2-P1-04: Each card shows fare + estimated fare (demand surcharge).
- *
- * Route: /(passenger)/results?origin=...&destination=...&date=...&minSeats=...
- * Navigates to /(passenger)/trip/[tripId] on card press.
+ * SP2-P1-03 & SP2-P1-04: Search results screen — Figma PA-05 light canvas cards + sort pills.
  */
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -18,13 +14,20 @@ import {
 } from 'react-native';
 import { useAuth } from '../../src/session/AuthContext';
 import type { TripSearchResult } from '../../src/api/client';
+import { AppBar, StatusBadge } from '../../src/components/UI';
+import { CARD_SHADOW, COLORS } from '../../src/theme/tokens';
 import {
+  formatArrivalTime,
   formatDeparture,
+  formatDuration,
+  formatTimeOnly,
   formatVND,
   seatColor,
   surchargePercent,
 } from '../../src/trips/tripFormatters';
 import { useTripSearch } from '../../src/trips/useTripSearch';
+
+type SortKey = 'time' | 'price' | 'seats';
 
 export default function SearchResultsScreen() {
   const { session } = useAuth();
@@ -37,6 +40,7 @@ export default function SearchResultsScreen() {
   }>();
 
   const { state, search } = useTripSearch(session?.accessToken ?? '');
+  const [sortBy, setSortBy] = useState<SortKey>('time');
 
   useEffect(() => {
     search({
@@ -47,25 +51,25 @@ export default function SearchResultsScreen() {
     });
   }, []);
 
-  function renderHeader() {
-    const parts: string[] = [];
-    if (params.origin) parts.push(params.origin);
-    if (params.destination) parts.push(params.destination);
-    const route = parts.length ? parts.join(' → ') : 'Tất cả tuyến';
-    const dateLabel = params.date ?? 'Tất cả ngày';
-    return (
-      <View style={styles.headerBox}>
-        <Pressable onPress={() => router.back()} accessibilityLabel="Quay lại">
-          <Text style={styles.back}>← Quay lại</Text>
-        </Pressable>
-        <Text style={styles.routeLabel}>{route}</Text>
-        <Text style={styles.dateMeta}>{dateLabel}</Text>
-      </View>
-    );
-  }
+  const routeTitle =
+    [params.origin, params.destination].filter(Boolean).join(' → ') || 'Tất cả tuyến';
+  const subLabel = `${params.date || 'Tất cả ngày'} · ${params.minSeats || '1'} khách`;
+
+  const sortedResults =
+    state.status === 'success'
+      ? [...state.results].sort((a, b) => {
+          if (sortBy === 'price') return a.estimatedFare - b.estimatedFare;
+          if (sortBy === 'seats') return b.availableSeats - a.availableSeats;
+          return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
+        })
+      : [];
 
   function renderItem({ item }: { item: TripSearchResult }) {
     const pct = surchargePercent(item);
+    const totalSeatsText = item.seatCapacity
+      ? `Còn ${item.availableSeats}/${item.seatCapacity} chỗ`
+      : `Còn ${item.availableSeats} chỗ`;
+
     return (
       <Pressable
         style={styles.card}
@@ -78,53 +82,96 @@ export default function SearchResultsScreen() {
         accessibilityRole="button"
         accessibilityLabel={`Chuyến ${item.origin} đến ${item.destination}`}
       >
-        {/* Route + time */}
-        <Text style={styles.cardRoute}>
-          {item.origin} → {item.destination}
-        </Text>
-        <Text style={styles.cardDep}>{formatDeparture(item.departureTime)}</Text>
+        <View style={styles.cardTop}>
+          <Text style={styles.companyName} numberOfLines={1}>
+            {item.companyName ?? item.routeName}
+          </Text>
+          {pct > 0 ? (
+            <View style={styles.surchargeChip}>
+              <Text style={styles.surchargeChipText}>Nhu cầu cao +{pct}%</Text>
+            </View>
+          ) : (
+            <StatusBadge status={item.status} label="Đang mở bán" />
+          )}
+        </View>
 
-        <View style={styles.row}>
-          {/* Fare block */}
+        <View style={styles.timelineRow}>
           <View>
-            <Text style={styles.fareBase}>{formatVND(item.fare)}</Text>
-            {pct > 0 ? (
-              <Text style={styles.fareEst}>
-                ~{formatVND(item.estimatedFare)}
-                <Text style={styles.surcharge}> +{pct}%</Text>
-              </Text>
-            ) : null}
+            <Text style={styles.timeBig}>{formatTimeOnly(item.departureTime)}</Text>
+            <Text style={styles.cityText}>{item.origin}</Text>
           </View>
-
-          {/* Seat + vehicle */}
-          <View style={styles.right}>
-            <Text style={[styles.seats, { color: seatColor(item.availableSeats) }]}>
-              {item.availableSeats} ghế
+          <View style={styles.midTimeline}>
+            <Text style={styles.durationLabel}>{formatDuration(item.estimatedMinutes)}</Text>
+            <View style={styles.dashRow}>
+              <View style={[styles.dot, { backgroundColor: COLORS.teal }]} />
+              <View style={styles.dashedLine} />
+              <View style={[styles.dot, { backgroundColor: COLORS.danger }]} />
+            </View>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={styles.timeBig}>
+              {formatArrivalTime(item.departureTime, item.estimatedMinutes)}
             </Text>
-            <Text style={styles.vehicle}>{item.vehicleType}</Text>
+            <Text style={styles.cityText}>{item.destination}</Text>
           </View>
         </View>
 
-        <Text style={styles.driver}>👤 {item.driverName}</Text>
-        <Text style={styles.duration}>⏱ ~{item.estimatedMinutes} phút</Text>
+        <Text style={styles.metaLine}>
+          {formatDeparture(item.departureTime)} · {item.vehicleType} · Tài xế {item.driverName}
+        </Text>
+
+        <View style={styles.cardBottom}>
+          <Text style={[styles.seatsText, { color: seatColor(item.availableSeats) }]}>
+            {totalSeatsText}
+          </Text>
+          <View style={{ alignItems: 'flex-end' }}>
+            {pct > 0 ? (
+              <Text style={styles.baseStrike}>{formatVND(item.fare)}</Text>
+            ) : null}
+            <Text style={styles.fareBig}>
+              {formatVND(item.estimatedFare)}
+              <Text style={styles.perSeat}>/chỗ</Text>
+            </Text>
+          </View>
+        </View>
       </Pressable>
     );
   }
 
   return (
     <View style={styles.root}>
+      <AppBar title={routeTitle} sub={subLabel} onBack={() => router.back()} />
+
+      <View style={styles.sortBar}>
+        {(
+          [
+            ['time', 'Giờ đi sớm'],
+            ['price', 'Giá thấp nhất'],
+            ['seats', 'Nhiều chỗ trống'],
+          ] as [SortKey, string][]
+        ).map(([key, label]) => {
+          const active = sortBy === key;
+          return (
+            <Pressable
+              key={key}
+              onPress={() => setSortBy(key)}
+              style={[styles.sortPill, active && styles.sortPillActive]}
+            >
+              <Text style={[styles.sortText, active && styles.sortTextActive]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       {state.status === 'loading' && (
         <View style={styles.center}>
-          {renderHeader()}
-          <ActivityIndicator color="#6366f1" size="large" style={{ marginTop: 48 }} />
+          <ActivityIndicator color={COLORS.primary} size="large" />
           <Text style={styles.loadingText}>Đang tìm chuyến xe…</Text>
         </View>
       )}
 
       {state.status === 'error' && (
         <View style={styles.center}>
-          {renderHeader()}
-          <Text style={styles.errorIcon}>⚠️</Text>
           <Text style={styles.errorText}>{state.message}</Text>
           <Pressable
             style={styles.retryBtn}
@@ -144,28 +191,28 @@ export default function SearchResultsScreen() {
 
       {state.status === 'success' && (
         <FlatList
-          data={state.results}
-          keyExtractor={(t) => String(t.tripId)}
+          data={sortedResults}
+          keyExtractor={t => String(t.tripId)}
           ListHeaderComponent={
-            <>
-              {renderHeader()}
-              <Text style={styles.resultCount}>
-                {state.results.length === 0
-                  ? 'Không tìm thấy chuyến phù hợp'
-                  : `${state.results.length} chuyến xe`}
-              </Text>
-            </>
+            <Text style={styles.resultCount}>
+              {sortedResults.length === 0
+                ? 'Không tìm thấy chuyến phù hợp'
+                : `${sortedResults.length} chuyến phù hợp`}
+            </Text>
           }
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyIcon}>🚌</Text>
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyTitle}>Không có chuyến nào</Text>
               <Text style={styles.emptyText}>
-                Không có chuyến nào khớp với bộ lọc.{'\n'}Hãy thử điều chỉnh lại điều kiện tìm kiếm.
+                Thử thay đổi điểm đi/đến, ngày khởi hành hoặc số lượng khách.
               </Text>
+              <Pressable style={styles.retryBtn} onPress={() => router.back()}>
+                <Text style={styles.retryText}>Chọn lại điều kiện</Text>
+              </Pressable>
             </View>
           }
           renderItem={renderItem}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={styles.listContent}
         />
       )}
     </View>
@@ -173,45 +220,101 @@ export default function SearchResultsScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a' },
-  center: { flex: 1, paddingHorizontal: 24 },
-  headerBox: { paddingTop: 60, paddingBottom: 16 },
-  back: { color: '#6366f1', fontSize: 14, marginBottom: 12 },
-  routeLabel: { color: '#f1f5f9', fontSize: 22, fontWeight: '700' },
-  dateMeta: { color: '#64748b', fontSize: 13, marginTop: 4 },
-  resultCount: { color: '#94a3b8', fontSize: 13, marginBottom: 12, paddingHorizontal: 24 },
-  list: { paddingHorizontal: 24, paddingBottom: 40 },
-  card: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  cardRoute: { color: '#f1f5f9', fontSize: 16, fontWeight: '700' },
-  cardDep: { color: '#6366f1', fontSize: 13, marginTop: 4, marginBottom: 14 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  fareBase: { color: '#f1f5f9', fontSize: 18, fontWeight: '700' },
-  fareEst: { color: '#94a3b8', fontSize: 12, marginTop: 2 },
-  surcharge: { color: '#f59e0b', fontWeight: '600' },
-  right: { alignItems: 'flex-end' },
-  seats: { fontSize: 15, fontWeight: '700' },
-  vehicle: { color: '#64748b', fontSize: 12, marginTop: 2 },
-  driver: { color: '#94a3b8', fontSize: 13, marginTop: 10 },
-  duration: { color: '#64748b', fontSize: 12, marginTop: 4 },
-  loadingText: { color: '#64748b', textAlign: 'center', marginTop: 12 },
-  errorIcon: { fontSize: 48, textAlign: 'center', marginTop: 48 },
-  errorText: { color: '#ef4444', textAlign: 'center', marginTop: 12, fontSize: 14 },
-  retryBtn: {
-    marginTop: 20,
-    backgroundColor: '#6366f1',
-    borderRadius: 12,
+  root: { flex: 1, backgroundColor: COLORS.canvas },
+  sortBar: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    alignItems: 'center',
   },
-  retryText: { color: '#fff', fontWeight: '600' },
-  empty: { alignItems: 'center', paddingTop: 48 },
-  emptyIcon: { fontSize: 56 },
-  emptyText: { color: '#64748b', textAlign: 'center', marginTop: 16, lineHeight: 22 },
+  sortPill: {
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+  },
+  sortPillActive: { backgroundColor: COLORS.navy, borderColor: COLORS.navy },
+  sortText: { fontSize: 13, fontWeight: '600', color: COLORS.slate600 },
+  sortTextActive: { color: '#ffffff' },
+
+  listContent: { paddingHorizontal: 16, paddingBottom: 36 },
+  resultCount: { fontSize: 13, color: COLORS.slate500, marginBottom: 10 },
+
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 16,
+    marginBottom: 12,
+    ...CARD_SHADOW,
+  },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  companyName: { fontSize: 14, fontWeight: '700', color: COLORS.navy, flex: 1 },
+  surchargeChip: {
+    backgroundColor: COLORS.warningSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  surchargeChipText: { color: COLORS.warningText, fontSize: 11, fontWeight: '700' },
+
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 14,
+  },
+  timeBig: { fontSize: 22, fontWeight: '800', color: COLORS.navy, lineHeight: 24 },
+  cityText: { fontSize: 12, color: COLORS.slate500, marginTop: 3 },
+  midTimeline: { flex: 1, alignItems: 'center' },
+  durationLabel: { fontSize: 11, color: COLORS.slate500, marginBottom: 4 },
+  dashRow: { flexDirection: 'row', alignItems: 'center', width: '100%' },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  dashedLine: {
+    flex: 1,
+    height: 1,
+    borderTopWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: COLORS.slate300,
+    marginHorizontal: 4,
+  },
+
+  metaLine: { fontSize: 12, color: COLORS.slate500, marginTop: 12 },
+
+  cardBottom: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.line,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  seatsText: { fontSize: 13, fontWeight: '700' },
+  baseStrike: {
+    fontSize: 12,
+    color: COLORS.slate400,
+    textDecorationLine: 'line-through',
+  },
+  fareBig: { fontSize: 18, fontWeight: '800', color: COLORS.primary },
+  perSeat: { fontSize: 12, fontWeight: '500', color: COLORS.slate500 },
+
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  loadingText: { color: COLORS.slate500, marginTop: 12 },
+  errorText: { color: COLORS.danger, textAlign: 'center', fontSize: 14 },
+  retryBtn: {
+    marginTop: 16,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+  },
+  retryText: { color: '#ffffff', fontWeight: '700' },
+  emptyBox: { alignItems: 'center', paddingTop: 48, paddingHorizontal: 24 },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: COLORS.navy },
+  emptyText: { fontSize: 14, color: COLORS.slate500, textAlign: 'center', marginTop: 6, lineHeight: 20 },
 });
