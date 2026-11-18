@@ -38,6 +38,7 @@ export function CompanyProfilePage() {
   const { session, setCompanyMeta } = useAuth();
   const [company, setCompany] = useState<CompanyResponse | null>(null);
   const [needsRegistration, setNeedsRegistration] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
   const [recentBookings, setRecentBookings] = useState<BookingRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -79,6 +80,20 @@ export function CompanyProfilePage() {
     loadProfile();
   }, [loadProfile]);
 
+  function startEditingProfile() {
+    if (!company) return;
+    setForm({
+      name: company.name ?? '',
+      phone: company.contactPhone ?? '',
+      representativeName: company.representativeName ?? '',
+      address: company.address ?? '',
+      businessInformation: company.businessInformation ?? 'Giấy phép kinh doanh vận tải đã đăng ký',
+    });
+    setEditingProfile(true);
+    setError(null);
+    setSuccess(null);
+  }
+
   async function handleRegisterSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -95,19 +110,27 @@ export function CompanyProfilePage() {
 
     setSubmitting(true);
     try {
-      const created = await companyApi.registerCompany({
+      const payload = {
         name: form.name.trim(),
         phone: form.phone.trim(),
         representativeName: form.representativeName.trim(),
         address: form.address.trim(),
         businessInformation: form.businessInformation.trim(),
-      });
-      setCompany(created);
+      };
+      const updated = editingProfile
+        ? await companyApi.updateMyCompanyProfile(payload)
+        : await companyApi.registerCompany(payload);
+      setCompany(updated);
       setNeedsRegistration(false);
-      setCompanyMeta(created.id, created.name, created.status === 'APPROVED');
-      setSuccess('Đã gửi hồ sơ đăng ký nhà xe. Hồ sơ đang chờ quản trị viên phê duyệt.');
+      setEditingProfile(false);
+      setCompanyMeta(updated.id, updated.name, updated.status === 'APPROVED');
+      setSuccess(
+        editingProfile
+          ? 'Đã cập nhật hồ sơ nhà xe thành công.'
+          : 'Đã gửi hồ sơ đăng ký nhà xe. Hồ sơ đang chờ quản trị viên phê duyệt.',
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể gửi hồ sơ đăng ký.');
+      setError(err instanceof Error ? err.message : 'Không thể lưu hồ sơ nhà xe.');
     } finally {
       setSubmitting(false);
     }
@@ -175,14 +198,25 @@ export function CompanyProfilePage() {
 
       {loading ? (
         <PageSpinner />
-      ) : needsRegistration ? (
+      ) : needsRegistration || editingProfile ? (
         <div className="two-col two-col--aside">
           <section className="panel">
             <div className="panel__head">
               <div>
-                <h2 className="panel__title">Thông tin đăng ký doanh nghiệp</h2>
+                <h2 className="panel__title">
+                  {editingProfile ? 'Cập nhật hồ sơ doanh nghiệp' : 'Thông tin đăng ký doanh nghiệp'}
+                </h2>
                 <p className="panel__sub">Các trường có dấu * là bắt buộc</p>
               </div>
+              {editingProfile && (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => setEditingProfile(false)}
+                >
+                  Huỷ chỉnh sửa
+                </button>
+              )}
             </div>
 
             <form className="form" onSubmit={handleRegisterSubmit} noValidate>
@@ -255,7 +289,7 @@ export function CompanyProfilePage() {
                 <button className="btn btn--primary btn--lg" type="submit" disabled={submitting}>
                   {submitting ? <Spinner size="sm" /> : (
                     <>
-                      <span>Gửi hồ sơ đăng ký</span>
+                      <span>{editingProfile ? 'Lưu thay đổi hồ sơ' : 'Gửi hồ sơ đăng ký'}</span>
                       <Icon name="right" size={16} />
                     </>
                   )}
@@ -359,6 +393,13 @@ export function CompanyProfilePage() {
                       Mã đối tác #{company.id} · Đăng ký ngày {new Date(company.createdAt).toLocaleDateString('vi-VN')}
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--sm"
+                    onClick={startEditingProfile}
+                  >
+                    {company.status === 'REJECTED' ? 'Sửa & Gửi lại hồ sơ' : 'Chỉnh sửa hồ sơ'}
+                  </button>
                 </div>
                 <dl className="detail-grid">
                   <div className="detail-item">

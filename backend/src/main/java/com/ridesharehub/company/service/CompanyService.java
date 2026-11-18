@@ -71,6 +71,36 @@ public class CompanyService {
         return CompanyResponse.from(company);
     }
 
+    /** PUT /api/v1/companies/me — updates company profile; if REJECTED, resubmits to PENDING. */
+    public CompanyResponse updateMyCompany(CompanyRegistrationRequest req, AuthPrincipal principal) {
+        if (principal.role() != UserRole.TRANSPORT_COMPANY) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only TRANSPORT_COMPANY accounts own a company profile");
+        }
+        TransportCompany company = companyRepository.findByOwner_Id(principal.userId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Company registration not found for this account"));
+        company.updateProfile(
+                req.name().trim(),
+                req.address().trim(),
+                req.phone().trim(),
+                req.representativeName().trim(),
+                req.businessInformation().trim());
+        return CompanyResponse.from(companyRepository.save(company));
+    }
+
+    /** PUT /api/v1/companies/{companyId} — owner updates company profile. */
+    public CompanyResponse updateCompany(Long companyId, CompanyRegistrationRequest req, AuthPrincipal principal) {
+        TransportCompany company = requireOwnedOrAdmin(companyId, principal);
+        company.updateProfile(
+                req.name().trim(),
+                req.address().trim(),
+                req.phone().trim(),
+                req.representativeName().trim(),
+                req.businessInformation().trim());
+        return CompanyResponse.from(companyRepository.save(company));
+    }
+
     /** GET /api/v1/companies/registrations — admin lists all registrations. */
     @Transactional(readOnly = true)
     public List<CompanyResponse> listRegistrations() {

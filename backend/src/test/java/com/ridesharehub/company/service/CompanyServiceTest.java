@@ -152,6 +152,24 @@ class CompanyServiceTest {
         }
 
         @Test
+        void rejected_company_can_update_profile_and_resubmit_to_pending() {
+            TransportCompany company = pendingCompany(1L, 10L);
+            User adminUser = userWithId(99L);
+            company.reject(adminUser, "Missing documents");
+
+            when(companyRepository.findByOwner_Id(10L)).thenReturn(Optional.of(company));
+            when(companyRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            CompanyRegistrationRequest updatedReq = new CompanyRegistrationRequest(
+                    "Acme Updated", "0988888888", "456 New St", "New Rep", "Full License #123");
+            CompanyResponse resp = service.updateMyCompany(updatedReq, TC_PRINCIPAL);
+
+            assertThat(resp.name()).isEqualTo("Acme Updated");
+            assertThat(resp.status()).isEqualTo(CompanyStatus.PENDING);
+            assertThat(resp.rejectReason()).isNull();
+        }
+
+        @Test
         void reject_without_reason_is_unprocessable() {
             TransportCompany company = pendingCompany(1L, 10L);
             User adminUser = userWithId(99L);

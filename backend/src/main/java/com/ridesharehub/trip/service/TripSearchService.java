@@ -20,8 +20,8 @@ import com.ridesharehub.trip.repository.TripRepository;
 
 /**
  * SP2-P1-01: Trip search/filter for passengers.
- * SP2-P1-02: V1 fare estimation — returns route baseFare adjusted by
- *            a seat-demand factor when the trip is nearly full.
+ * SP2-P1-02: V1 fare estimation — returns the trip's configured per-seat fare
+ *            (MVP V1 excludes surge pricing per project specification section 5.13 & 12.2).
  */
 @Service
 @Transactional(readOnly = true)
@@ -31,17 +31,6 @@ public class TripSearchService {
     private static final int PAGE_SIZE = 50;
 
     private static final ZoneId SEARCH_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
-
-    /**
-     * Fare surcharge tiers (SP2-P1-02 V1 policy):
-     *  < 20 % remaining → +20 % surcharge
-     *  < 50 % remaining → +10 % surcharge
-     *  otherwise        → no surcharge
-     */
-    private static final BigDecimal SURCHARGE_HIGH   = new BigDecimal("0.20");
-    private static final BigDecimal SURCHARGE_MEDIUM = new BigDecimal("0.10");
-    private static final double     THRESHOLD_HIGH   = 0.20;
-    private static final double     THRESHOLD_MEDIUM = 0.50;
 
     private final TripRepository tripRepository;
     private final long bookCutoffMinutes;
@@ -110,8 +99,8 @@ public class TripSearchService {
             return null;
         }
 
-        int capacity      = trip.getVehicle().getSeatCapacity();
-        int bookedSeats   = trip.getBookedSeats();
+        int capacity       = trip.getVehicle().getSeatCapacity();
+        int bookedSeats    = trip.getBookedSeats();
         int availableSeats = capacity - bookedSeats;
 
         if (availableSeats < minSeats) {
@@ -119,6 +108,9 @@ public class TripSearchService {
         }
 
         BigDecimal estimatedFare = estimateFare(trip.getFare(), capacity, bookedSeats);
+        BigDecimal rating = trip.getCompany().getAvgRating() != null
+                ? trip.getCompany().getAvgRating()
+                : BigDecimal.ZERO;
 
         return new TripSearchResult(
                 trip.getId(),
@@ -134,33 +126,29 @@ public class TripSearchService {
                 capacity,
                 trip.getVehicle().getVehicleType(),
                 trip.getVehicle().getPlateNumber(),
+                trip.getVehicle().getBrand(),
+                trip.getVehicle().getModel(),
                 trip.getDriver().getFullName(),
+                trip.getCompany().getId(),
                 trip.getCompany().getName(),
+                rating,
+                trip.getCompany().getRatingCount(),
+                trip.getNote(),
                 trip.getStatus()
         );
     }
 
     /**
      * SP2-P1-02 V1 fare estimation:
-     * Applies a demand-based surcharge when available capacity is low.
+     * MVP V1 uses the trip/route fixed price without demand-based surge pricing
+     * (per project specification sections 5.13 and 12.2).
      * Result is rounded to 2 decimal places (HALF_UP).
      */
     public BigDecimal estimateFare(BigDecimal baseFare, int capacity, int bookedSeats) {
-        if (capacity <= 0) {
-            return baseFare;
+        if (baseFare == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
-        double remainingRatio = (double) (capacity - bookedSeats) / capacity;
-        BigDecimal surcharge;
-        if (remainingRatio < THRESHOLD_HIGH) {
-            surcharge = SURCHARGE_HIGH;
-        } else if (remainingRatio < THRESHOLD_MEDIUM) {
-            surcharge = SURCHARGE_MEDIUM;
-        } else {
-            surcharge = BigDecimal.ZERO;
-        }
-        return baseFare
-                .multiply(BigDecimal.ONE.add(surcharge))
-                .setScale(2, RoundingMode.HALF_UP);
+        return baseFare.setScale(2, RoundingMode.HALF_UP);
     }
 
     private static String blankToNull(String value) {

@@ -235,8 +235,14 @@ export interface TripSearchResult {
   seatCapacity?: number;
   vehicleType: string;
   vehiclePlate?: string;
+  vehicleBrand?: string | null;
+  vehicleModel?: string | null;
   driverName: string;
+  companyId?: number | null;
   companyName?: string;
+  companyRating?: number;
+  companyRatingCount?: number;
+  note?: string | null;
   status: string;
 }
 
@@ -289,8 +295,49 @@ export interface DriverTripSummary {
   status: 'DRAFT' | 'PUBLISHED' | 'FULL' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 }
 
+export interface DriverProfile {
+  id: number;
+  companyId: number;
+  fullName: string;
+  phone: string;
+  licenseNumber: string;
+  status: 'AVAILABLE' | 'ON_TRIP' | 'INACTIVE';
+  createdAt: string;
+}
+
 export async function getDriverTrips(accessToken: string): Promise<DriverTripSummary[]> {
   const result = await request<DriverTripSummary[]>('/api/v1/driver/trips', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return result.data;
+}
+
+export async function getMyDriverProfile(accessToken: string): Promise<DriverProfile> {
+  const result = await request<DriverProfile>('/api/v1/driver/me', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return result.data;
+}
+
+export async function updateMyDriverStatus(
+  accessToken: string,
+  status: 'AVAILABLE' | 'INACTIVE',
+): Promise<DriverProfile> {
+  const result = await request<DriverProfile>('/api/v1/driver/status', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ status }),
+  });
+  return result.data;
+}
+
+export async function getTripBookings(
+  accessToken: string,
+  tripId: number,
+): Promise<BookingRecord[]> {
+  const result = await request<BookingRecord[]>(`/api/v1/trips/${tripId}/bookings`, {
     method: 'GET',
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -325,6 +372,7 @@ export interface BookingRecord {
   passengerId: number;
   passengerName: string;
   passengerEmail?: string;
+  passengerPhone?: string | null;
   tripId: number;
   routeName: string;
   origin: string;

@@ -7,9 +7,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { tripApi, type BookingRecord, type TripResponse } from '../api/client';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/Badge';
-import { ErrorAlert } from '../components/Alert';
+import { ErrorAlert, SuccessAlert } from '../components/Alert';
 import { Icon } from '../components/Icon';
-import { PageSpinner } from '../components/Spinner';
+import { PageSpinner, Spinner } from '../components/Spinner';
 import { useAuth } from '../auth/AuthContext';
 import { buildCompanyNav, initialsOf } from './companyNav';
 
@@ -38,26 +38,56 @@ export function TripBookingOverviewPage() {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
+  const [actionBookingId, setActionBookingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const loadData = React.useCallback(async () => {
+    if (!companyId || !tripId) return;
+    const id = Number(tripId);
+    const [t, bs] = await Promise.all([
+      tripApi.listTrips(companyId).then(ts => ts.find(x => x.id === id) ?? null),
+      tripApi.listTripBookings(companyId, id),
+    ]);
+    setTrip(t);
+    setBookings(bs);
+  }, [companyId, tripId]);
 
   useEffect(() => {
     if (!companyId || !tripId) {
       navigate('/company/trips', { replace: true });
       return;
     }
-    const id = Number(tripId);
-
-    Promise.all([
-      tripApi.listTrips(companyId).then(ts => ts.find(t => t.id === id) ?? null),
-      tripApi.listTripBookings(companyId, id),
-    ])
-      .then(([t, bs]) => {
-        setTrip(t);
-        setBookings(bs);
-      })
+    loadData()
       .catch(() => setError('Không tải được dữ liệu đặt chỗ.'))
       .finally(() => setLoading(false));
-  }, [companyId, tripId, navigate]);
+  }, [companyId, tripId, navigate, loadData]);
+
+  async function handleBookingAction(
+    bookingId: number,
+    action: 'CONFIRM' | 'NO_SHOW' | 'CANCEL',
+  ) {
+    setActionBookingId(bookingId);
+    setError(null);
+    setSuccess(null);
+    try {
+      if (action === 'CONFIRM') {
+        await tripApi.confirmBooking(bookingId);
+        setSuccess('Đã xác nhận đặt chỗ cho hành khách.');
+      } else if (action === 'NO_SHOW') {
+        await tripApi.markNoShow(bookingId, 'Hành khách vắng mặt tại điểm đón');
+        setSuccess('Đã đánh dấu hành khách vắng mặt (NO_SHOW) và hoàn lại ghế.');
+      } else {
+        await tripApi.cancelBooking(bookingId, 'Nhà xe hủy đặt chỗ');
+        setSuccess('Đã hủy đặt chỗ và hoàn lại ghế trống.');
+      }
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể cập nhật trạng thái đặt chỗ.');
+    } finally {
+      setActionBookingId(null);
+    }
+  }
 
   const activeSeats = bookings
     .filter(b => b.status !== 'CANCELLED' && b.status !== 'NO_SHOW')
@@ -106,6 +136,7 @@ export function TripBookingOverviewPage() {
       </button>
 
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
+      {success && <SuccessAlert message={success} onDismiss={() => setSuccess(null)} />}
 
       {loading ? (
         <PageSpinner />
@@ -226,25 +257,77 @@ export function TripBookingOverviewPage() {
                       <th>Giá ước tính</th>
                       <th>Trạng thái</th>
                       <th>Ngày đặt</th>
+                      <th>Thao tác</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map(b => (
-                      <tr key={b.id}>
-                        <td className="data-table__plate" style={{ color: 'var(--primary)' }}>
-                          {b.bookingCode}
-                        </td>
-                        <td style={{ fontWeight: 600 }}>{b.passengerName}</td>
-                        <td className="data-table__center">{b.seatCount} chỗ</td>
-                        <td style={{ maxWidth: 180 }}>{b.pickup?.label ?? '—'}</td>
-                        <td style={{ maxWidth: 180 }}>{b.dropoff?.label ?? '—'}</td>
-                        <td style={{ fontWeight: 600 }}>{formatVND(b.fareEstimate)}</td>
-                        <td><Badge value={b.status} /></td>
-                        <td style={{ fontSize: 12, color: 'var(--slate-500)', whiteSpace: 'nowrap' }}>
-                          {formatDate(b.createdAt)}
-                        </td>
-                      </tr>
-                    ))}
+                    {filtered.map(b => {
+                      const canManage =
+                        trip?.status !== 'COMPLETED' &&
+                        trip?.status !== 'CANCELLED' &&
+                        (b.status === 'PENDING' || b.status === 'CONFIRMED');
+                      const isActing = actionBookingId === b.id;
+                      return (
+                        <tr key={b.id}>
+                          <td className="data-table__plate" style={{ color: 'var(--primary)' }}>
+                            {b.bookingCode}
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 600 }}>{b.passengerName}</div>
+                            {b.passengerPhone ? (
+                              <div style={{ fontSize: 12, color: 'var(--slate-500)' }}>
+                                {b.passengerPhone}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="data-table__center">{b.seatCount} chỗ</td>
+                          <td style={{ maxWidth: 180 }}>{b.pickup?.label ?? '—'}</td>
+                          <td style={{ maxWidth: 180 }}>{b.dropoff?.label ?? '—'}</td>
+                          <td style={{ fontWeight: 600 }}>{formatVND(b.fareEstimate)}</td>
+                          <td><Badge value={b.status} /></td>
+                          <td style={{ fontSize: 12, color: 'var(--slate-500)', whiteSpace: 'nowrap' }}>
+                            {formatDate(b.createdAt)}
+                          </td>
+                          <td>
+                            {canManage ? (
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                {b.status === 'PENDING' && (
+                                  <button
+                                    type="button"
+                                    className="btn btn--primary btn--sm"
+                                    disabled={isActing}
+                                    onClick={() => handleBookingAction(b.id, 'CONFIRM')}
+                                  >
+                                    {isActing ? <Spinner size="sm" /> : 'Xác nhận'}
+                                  </button>
+                                )}
+                                {b.status === 'CONFIRMED' && (
+                                  <button
+                                    type="button"
+                                    className="btn btn--secondary btn--sm"
+                                    disabled={isActing}
+                                    onClick={() => handleBookingAction(b.id, 'NO_SHOW')}
+                                  >
+                                    Vắng mặt
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn btn--ghost btn--sm"
+                                  style={{ color: 'var(--danger)' }}
+                                  disabled={isActing}
+                                  onClick={() => handleBookingAction(b.id, 'CANCEL')}
+                                >
+                                  Huỷ vé
+                                </button>
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: 12, color: 'var(--slate-400)' }}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

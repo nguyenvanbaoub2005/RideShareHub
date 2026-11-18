@@ -1,11 +1,18 @@
 package com.ridesharehub.trip.service;
 
 import com.ridesharehub.auth.enums.UserRole;
+import com.ridesharehub.booking.entity.Booking;
+import com.ridesharehub.booking.enums.BookingStatus;
+import com.ridesharehub.booking.repository.BookingRepository;
 import com.ridesharehub.company.repository.CompanyRepository;
 import com.ridesharehub.company.entity.TransportCompany;
 import com.ridesharehub.company.entity.Vehicle;
+import com.ridesharehub.company.enums.VehicleStatus;
 import com.ridesharehub.company.repository.VehicleRepository;
+import com.ridesharehub.driver.dto.DriverResponse;
+import com.ridesharehub.driver.dto.DriverStatusRequest;
 import com.ridesharehub.driver.entity.Driver;
+import com.ridesharehub.driver.enums.DriverStatus;
 import com.ridesharehub.driver.repository.DriverRepository;
 import com.ridesharehub.route.entity.Route;
 import com.ridesharehub.route.repository.RouteRepository;
@@ -13,6 +20,7 @@ import com.ridesharehub.security.AuthPrincipal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,17 +42,29 @@ public class TripService {
     private final RouteRepository routeRepository;
     private final VehicleRepository vehicleRepository;
     private final DriverRepository driverRepository;
+    private final BookingRepository bookingRepository;
+
+    @Autowired
+    public TripService(TripRepository tripRepository,
+            CompanyRepository companyRepository,
+            RouteRepository routeRepository,
+            VehicleRepository vehicleRepository,
+            DriverRepository driverRepository,
+            BookingRepository bookingRepository) {
+        this.tripRepository = tripRepository;
+        this.companyRepository = companyRepository;
+        this.routeRepository = routeRepository;
+        this.vehicleRepository = vehicleRepository;
+        this.driverRepository = driverRepository;
+        this.bookingRepository = bookingRepository;
+    }
 
     public TripService(TripRepository tripRepository,
             CompanyRepository companyRepository,
             RouteRepository routeRepository,
             VehicleRepository vehicleRepository,
             DriverRepository driverRepository) {
-        this.tripRepository = tripRepository;
-        this.companyRepository = companyRepository;
-        this.routeRepository = routeRepository;
-        this.vehicleRepository = vehicleRepository;
-        this.driverRepository = driverRepository;
+        this(tripRepository, companyRepository, routeRepository, vehicleRepository, driverRepository, null);
     }
 
     // ================================================================== CRUD
@@ -58,6 +78,8 @@ public class TripService {
         Vehicle vehicle = requireVehicleOfCompany(req.vehicleId(), companyId);
         Driver driver = requireDriverOfCompany(req.driverId(), companyId);
 
+        assertVehicleOperational(vehicle);
+        assertDriverOperational(driver);
         assertNoVehicleConflict(vehicle.getId(), null, req.departureTime());
         assertNoDriverConflict(driver.getId(), null, req.departureTime());
 
@@ -86,6 +108,32 @@ public class TripService {
                 .toList();
     }
 
+    /** GET /api/v1/driver/me — authenticated DRIVER fetches own driver profile */
+    @Transactional(readOnly = true)
+    public DriverResponse getMyDriverProfile(AuthPrincipal principal) {
+        Driver driver = driverRepository.findByUserId(principal.userId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Driver profile not found for this user"));
+        return DriverResponse.from(driver);
+    }
+
+    /** PUT /api/v1/driver/status — authenticated DRIVER toggles AVAILABLE / INACTIVE status */
+    public DriverResponse updateMyDriverStatus(DriverStatusRequest req, AuthPrincipal principal) {
+        Driver driver = driverRepository.findByUserId(principal.userId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Driver profile not found for this user"));
+        if (driver.getStatus() == DriverStatus.ON_TRIP) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Không thể đổi trạng thái khi đang thực hiện chuyến đi");
+        }
+        if (req.status() == DriverStatus.ON_TRIP) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY, "Tài xế chỉ có thể bật Sẵn sàng (AVAILABLE) hoặc Tạm nghỉ (INACTIVE)");
+        }
+        driver.updateStatus(req.status());
+        return DriverResponse.from(driverRepository.save(driver));
+    }
+
     /** GET /api/v1/companies/{companyId}/trips/{tripId} */
     @Transactional(readOnly = true)
     public TripResponse getTrip(Long companyId, Long tripId, AuthPrincipal principal) {
@@ -103,6 +151,8 @@ public class TripService {
         Vehicle vehicle = requireVehicleOfCompany(req.vehicleId(), companyId);
         Driver driver = requireDriverOfCompany(req.driverId(), companyId);
 
+        assertVehicleOperational(vehicle);
+        assertDriverOperational(driver);
         assertNoVehicleConflict(vehicle.getId(), tripId, req.departureTime());
         assertNoDriverConflict(driver.getId(), tripId, req.departureTime());
 
@@ -119,6 +169,10 @@ public class TripService {
         requireApprovedAndOwned(companyId, principal);
         Trip trip = requireTripOfCompany(tripId, companyId);
         assertDepartureInFuture(trip.getDepartureTime());
+        assertVehicleOperational(trip.getVehicle());
+        assertDriverOperational(trip.getDriver());
+        assertNoVehicleConflict(trip.getVehicle().getId(), trip.getId(), trip.getDepartureTime());
+        assertNoDriverConflict(trip.getDriver().getId(), trip.getId(), trip.getDepartureTime());
         try {
             trip.publish();
         } catch (IllegalStateException ex) {
@@ -135,6 +189,17 @@ public class TripService {
             trip.cancel();
         } catch (IllegalStateException ex) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, ex.getMessage());
+        }
+        if (bookingRepository != null) {
+            List<Booking> activeBookings = bookingRepository.findAllByTrip_IdOrderByCreatedAtAsc(tripId)
+                    .stream()
+                    .filter(b -> b.getStatus() == BookingStatus.PENDING
+                            || b.getStatus() == BookingStatus.CONFIRMED)
+                    .toList();
+            for (Booking booking : activeBookings) {
+                booking.cancel("Chuyến xe bị hủy bởi nhà xe");
+                bookingRepository.save(booking);
+            }
         }
         return TripResponse.from(tripRepository.save(trip));
     }
@@ -204,6 +269,21 @@ public class TripService {
                     "Driver does not belong to this company");
         }
         return driver;
+    }
+
+    private void assertVehicleOperational(Vehicle vehicle) {
+        if (vehicle.getStatus() == VehicleStatus.MAINTENANCE
+                || vehicle.getStatus() == VehicleStatus.INACTIVE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Phương tiện đang bảo dưỡng hoặc ngưng hoạt động, không thể gán cho chuyến đi");
+        }
+    }
+
+    private void assertDriverOperational(Driver driver) {
+        if (driver.getStatus() == DriverStatus.INACTIVE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Tài xế đang ở trạng thái ngưng hoạt động, không thể gán cho chuyến đi");
+        }
     }
 
     /** Throws CONFLICT if the vehicle has an overlapping active trip. */

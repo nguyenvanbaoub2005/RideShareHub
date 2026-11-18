@@ -247,11 +247,16 @@ export function TripFormPage() {
                     onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
                   >
                     <option value="">-- Chọn xe --</option>
-                    {vehicles.map(v => (
-                      <option key={v.id} value={v.id}>
-                        {v.plateNumber} ({v.seatCapacity} chỗ · {VEHICLE_STATUS_LABELS[v.status] ?? v.status})
-                      </option>
-                    ))}
+                    {vehicles.map(v => {
+                      const unavailable =
+                        (v.status === 'MAINTENANCE' || v.status === 'INACTIVE') &&
+                        String(v.id) !== form.vehicleId;
+                      return (
+                        <option key={v.id} value={v.id} disabled={unavailable}>
+                          {v.plateNumber} ({v.seatCapacity} chỗ · {VEHICLE_STATUS_LABELS[v.status] ?? v.status})
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -265,11 +270,15 @@ export function TripFormPage() {
                     onChange={e => setForm(f => ({ ...f, driverId: e.target.value }))}
                   >
                     <option value="">-- Chọn tài xế --</option>
-                    {drivers.map(d => (
-                      <option key={d.id} value={d.id}>
-                        {d.fullName} ({d.phone} · {DRIVER_STATUS_LABELS[d.status] ?? d.status})
-                      </option>
-                    ))}
+                    {drivers.map(d => {
+                      const unavailable =
+                        d.status === 'INACTIVE' && String(d.id) !== form.driverId;
+                      return (
+                        <option key={d.id} value={d.id} disabled={unavailable}>
+                          {d.fullName} ({d.phone} · {DRIVER_STATUS_LABELS[d.status] ?? d.status})
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>

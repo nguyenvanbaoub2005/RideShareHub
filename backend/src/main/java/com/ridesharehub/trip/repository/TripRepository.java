@@ -102,6 +102,7 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
               JOIN FETCH t.driver d
               JOIN FETCH t.company c
             WHERE t.status = :status
+              AND c.status = com.ridesharehub.company.enums.CompanyStatus.APPROVED
               AND LOWER(r.origin) LIKE LOWER(CONCAT('%', :origin, '%'))
               AND LOWER(r.destination) LIKE LOWER(CONCAT('%', :destination, '%'))
               AND t.departureTime >= :from

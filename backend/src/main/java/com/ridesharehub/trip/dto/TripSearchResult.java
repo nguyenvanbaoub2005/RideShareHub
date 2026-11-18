@@ -22,8 +22,37 @@ public record TripSearchResult(
         int seatCapacity,
         String vehicleType,
         String vehiclePlate,
+        String vehicleBrand,
+        String vehicleModel,
         String driverName,
+        Long companyId,
         String companyName,
+        BigDecimal companyRating,
+        int companyRatingCount,
+        String note,
         TripStatus status
-) {}
+) {
+    public TripSearchResult(
+            Long tripId,
+            Long routeId,
+            String routeName,
+            String origin,
+            String destination,
+            int estimatedMinutes,
+            Instant departureTime,
+            BigDecimal fare,
+            BigDecimal estimatedFare,
+            int availableSeats,
+            int seatCapacity,
+            String vehicleType,
+            String vehiclePlate,
+            String driverName,
+            String companyName,
+            TripStatus status) {
+        this(tripId, routeId, routeName, origin, destination, estimatedMinutes,
+                departureTime, fare, estimatedFare, availableSeats, seatCapacity,
+                vehicleType, vehiclePlate, null, null, driverName, null, companyName,
+                BigDecimal.ZERO, 0, null, status);
+    }
+}
 

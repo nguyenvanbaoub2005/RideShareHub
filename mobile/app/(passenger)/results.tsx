@@ -38,7 +38,7 @@ import {
 } from '../../src/trips/tripFormatters';
 import { useTripSearch } from '../../src/trips/useTripSearch';
 
-type SortKey = 'time' | 'price' | 'seats';
+type SortKey = 'time' | 'price' | 'rating' | 'seats';
 type TimeWindow = 'all' | 'morning' | 'afternoon' | 'evening';
 
 interface TripFilters {
@@ -47,7 +47,9 @@ interface TripFilters {
   minPrice: number;
   maxPrice: number;
   minSeats: number;
+  minRating: number;
   companies: string[];
+  vehicleTypes: string[];
 }
 
 const TIME_OPTIONS: { key: TimeWindow; label: string; sub: string }[] = [
@@ -76,15 +78,20 @@ function applyTripFilters(
     if (item.estimatedFare < f.minPrice) return false;
     if (f.maxPrice < priceCeilingBound && item.estimatedFare > f.maxPrice) return false;
     if (item.availableSeats < f.minSeats) return false;
+    if (f.minRating > 0 && (item.companyRating ?? 0) < f.minRating) return false;
     if (f.companies.length > 0) {
       const company = item.companyName ?? item.routeName;
       if (!f.companies.includes(company)) return false;
+    }
+    if (f.vehicleTypes.length > 0) {
+      if (!f.vehicleTypes.includes(item.vehicleType)) return false;
     }
     return true;
   });
 
   return filtered.sort((a, b) => {
     if (f.sort === 'price') return a.estimatedFare - b.estimatedFare;
+    if (f.sort === 'rating') return (b.companyRating ?? 0) - (a.companyRating ?? 0);
     if (f.sort === 'seats') return b.availableSeats - a.availableSeats;
     return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
   });
@@ -116,6 +123,11 @@ export default function SearchResultsScreen() {
     return Array.from(new Set(names));
   }, [rawResults]);
 
+  const vehicleTypeOptions = useMemo(() => {
+    const types = rawResults.map(t => t.vehicleType).filter(Boolean);
+    return Array.from(new Set(types));
+  }, [rawResults]);
+
   const maxSeatBound = useMemo(() => {
     if (rawResults.length === 0) return 16;
     return Math.max(1, ...rawResults.map(t => t.availableSeats));
@@ -128,7 +140,9 @@ export default function SearchResultsScreen() {
       minPrice: 0,
       maxPrice: priceCeilingBound,
       minSeats: initialSeats,
+      minRating: 0,
       companies: [],
+      vehicleTypes: [],
     }),
     [priceCeilingBound, initialSeats],
   );
@@ -168,7 +182,9 @@ export default function SearchResultsScreen() {
     if (filters.timeWindow !== 'all') n += 1;
     if (filters.minPrice > 0 || filters.maxPrice < priceCeilingBound) n += 1;
     if (filters.minSeats > initialSeats) n += 1;
+    if (filters.minRating > 0) n += 1;
     if (filters.companies.length > 0) n += 1;
+    if (filters.vehicleTypes.length > 0) n += 1;
     return n;
   }, [filters, priceCeilingBound, initialSeats]);
 
@@ -187,12 +203,15 @@ export default function SearchResultsScreen() {
     const totalSeatsText = item.seatCapacity
       ? `Còn ${item.availableSeats}/${item.seatCapacity} chỗ`
       : `Còn ${item.availableSeats} chỗ`;
+    const brandModel = [item.vehicleBrand, item.vehicleModel].filter(Boolean).join(' ');
     const vehicleText = [
+      brandModel || null,
       formatVehicleLabel(item.vehicleType, item.seatCapacity),
       item.vehiclePlate || '',
     ]
       .filter(Boolean)
       .join(' · ');
+    const hasRating = (item.companyRatingCount ?? 0) > 0 && (item.companyRating ?? 0) > 0;
 
     return (
       <Pressable
@@ -214,14 +233,16 @@ export default function SearchResultsScreen() {
           <Text style={styles.companyName} numberOfLines={1}>
             {item.companyName ?? item.routeName}
           </Text>
-          {pct > 0 ? (
-            <View style={styles.surchargeChip}>
-              <Text style={styles.surchargeChipText}>Nhu cầu cao +{pct}%</Text>
+          {hasRating ? (
+            <View style={styles.verifiedChip}>
+              <Text style={styles.verifiedChipText}>
+                ★ {Number(item.companyRating).toFixed(1)}
+              </Text>
             </View>
           ) : (
             <View style={styles.verifiedChip}>
               <View style={styles.verifiedDot} />
-              <Text style={styles.verifiedChipText}>Đang mở bán</Text>
+              <Text style={styles.verifiedChipText}>Đã xác minh</Text>
             </View>
           )}
         </View>
@@ -315,7 +336,8 @@ export default function SearchResultsScreen() {
           [
             ['time', 'Giờ đi sớm'],
             ['price', 'Giá thấp nhất'],
-            ['seats', 'Nhiều chỗ trống'],
+            ['rating', 'Đánh giá cao'],
+            ['seats', 'Nhiều chỗ'],
           ] as [SortKey, string][]
         ).map(([key, label]) => {
           const active = filters.sort === key;
@@ -586,6 +608,62 @@ export default function SearchResultsScreen() {
                 </View>
               </Card>
             ) : null}
+
+            {/* Vehicle Type Filter per Doc Section 5.7 */}
+            {vehicleTypeOptions.length > 0 ? (
+              <Card>
+                <SectionHeading>Loại xe</SectionHeading>
+                <View style={styles.pricePresetRow}>
+                  {vehicleTypeOptions.map(vType => {
+                    const active = draftFilters.vehicleTypes.includes(vType);
+                    return (
+                      <Pressable
+                        key={vType}
+                        style={[styles.pricePresetChip, active && styles.pricePresetChipActive]}
+                        onPress={() =>
+                          setDraftFilters(prev => ({
+                            ...prev,
+                            vehicleTypes: active
+                              ? prev.vehicleTypes.filter(x => x !== vType)
+                              : [...prev.vehicleTypes, vType],
+                          }))
+                        }
+                      >
+                        <Text style={[styles.pricePresetText, active && styles.pricePresetTextActive]}>
+                          {vType}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </Card>
+            ) : null}
+
+            {/* Minimum Rating Filter per Doc Section 5.7 */}
+            <Card>
+              <SectionHeading>Đánh giá nhà xe</SectionHeading>
+              <View style={styles.pricePresetRow}>
+                {[
+                  { label: 'Tất cả', val: 0 },
+                  { label: '★ 3.5+', val: 3.5 },
+                  { label: '★ 4.0+', val: 4.0 },
+                  { label: '★ 4.5+', val: 4.5 },
+                ].map(opt => {
+                  const active = draftFilters.minRating === opt.val;
+                  return (
+                    <Pressable
+                      key={opt.label}
+                      style={[styles.pricePresetChip, active && styles.pricePresetChipActive]}
+                      onPress={() => setDraftFilters(prev => ({ ...prev, minRating: opt.val }))}
+                    >
+                      <Text style={[styles.pricePresetText, active && styles.pricePresetTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </Card>
           </ScrollView>
 
           <View style={styles.filterFooter}>

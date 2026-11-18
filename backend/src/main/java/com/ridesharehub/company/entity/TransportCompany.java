@@ -134,6 +134,22 @@ public class TransportCompany {
         this.updatedAt = Instant.now();
     }
 
+    public void updateProfile(String name, String address, String contactPhone,
+            String representativeName, String businessInformation) {
+        this.name = name;
+        this.address = address;
+        this.contactPhone = contactPhone;
+        this.representativeName = representativeName;
+        this.businessInformation = businessInformation;
+        if (this.status == CompanyStatus.REJECTED) {
+            this.status = CompanyStatus.PENDING;
+            this.rejectReason = null;
+            this.approvedBy = null;
+            this.approvedAt = null;
+        }
+        this.updatedAt = Instant.now();
+    }
+
     public boolean isApproved() { return status == CompanyStatus.APPROVED; }
 
     // ------------------------------------------------------------------ accessors

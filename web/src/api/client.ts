@@ -28,6 +28,8 @@ export interface BookingRecord {
   bookingCode: string;
   passengerId: number;
   passengerName: string;
+  passengerEmail?: string | null;
+  passengerPhone?: string | null;
   tripId: number;
   routeName?: string;
   origin?: string;
@@ -53,6 +55,7 @@ export interface CompanyResponse {
   contactPhone: string;
   contactEmail: string | null;
   representativeName: string;
+  businessInformation?: string | null;
   status: CompanyStatus;
   rejectReason: string | null;
   avgRating: number;
@@ -220,6 +223,18 @@ export const companyApi = {
   }) =>
     request<CompanyResponse>('/api/v1/companies/registrations', {
       method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateMyCompanyProfile: (data: {
+    name: string;
+    phone: string;
+    address: string;
+    representativeName: string;
+    businessInformation: string;
+  }) =>
+    request<CompanyResponse>('/api/v1/companies/me', {
+      method: 'PUT',
       body: JSON.stringify(data),
     }),
 
@@ -413,4 +428,24 @@ export const tripApi = {
 
   listTripBookings: (companyId: number, tripId: number) =>
     request<BookingRecord[]>(`/api/v1/companies/${companyId}/trips/${tripId}/bookings`),
+
+  confirmBooking: (bookingId: number) =>
+    request<BookingRecord>(`/api/v1/bookings/${bookingId}/confirm`, {
+      method: 'POST',
+    }),
+
+  cancelBooking: (bookingId: number, reason?: string) =>
+    request<BookingRecord>(`/api/v1/bookings/${bookingId}/cancel`, {
+      method: 'POST',
+      headers: {
+        'Idempotency-Key': `web-cancel-${bookingId}-${Date.now()}`,
+      },
+      body: JSON.stringify({ reason: reason ?? 'Nhà xe hủy đặt chỗ' }),
+    }),
+
+  markNoShow: (bookingId: number, reason?: string) =>
+    request<BookingRecord>(`/api/v1/bookings/${bookingId}/no-show`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason ?? 'Hành khách không có mặt tại điểm đón' }),
+    }),
 };
