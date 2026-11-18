@@ -299,7 +299,7 @@ export default function TripDetailScreen() {
         await updateMyProfile(session.accessToken, {
           fullName: cleanName,
           phone: cleanPhone || null,
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       const booking = await createBooking(
@@ -328,7 +328,7 @@ export default function TripDetailScreen() {
           setIdempotencyKey(generateIdempotencyKey('book'));
           setErrorMsg(
             err.message ||
-              'Chuyến xe không còn khả dụng hoặc không đủ số ghế bạn chọn.',
+            'Chuyến xe không còn khả dụng hoặc không đủ số ghế bạn chọn.',
           );
         } else {
           setErrorMsg(err.message);
