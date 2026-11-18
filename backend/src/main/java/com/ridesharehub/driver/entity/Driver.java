@@ -75,6 +75,11 @@ public class Driver {
         this.updatedAt = Instant.now();
     }
 
+    public void assignUser(Long userId) {
+        this.userId = userId;
+        this.updatedAt = Instant.now();
+    }
+
     // ------------------------------------------------------------------ accessors
 
     public Long getId()                    { return id; }

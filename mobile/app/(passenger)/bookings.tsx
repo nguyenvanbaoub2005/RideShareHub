@@ -1,15 +1,17 @@
 /**
- * SP2-P2-03: Passenger Bookings Screen — view booking status & cancel bookings.
- *
- * Route: /(passenger)/bookings
+ * SP2-P2-03 & SP2-P2-05: Passenger Bookings Screen — Figma PA-11 Tabs + PA-12 Detail Modal & Cancel Policy.
  */
 
-import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   Pressable,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -17,67 +19,94 @@ import {
 import {
   ApiError,
   type BookingRecord,
-  type BookingStatus,
   cancelBooking,
   generateIdempotencyKey,
   getMyBookings,
 } from '../../src/api/client';
 import { useAuth } from '../../src/session/AuthContext';
-import { formatDeparture, formatVND } from '../../src/trips/tripFormatters';
+import {
+  AppBar,
+  BusGlyph,
+  CarGlyph,
+  Card,
+  KeyValueRow,
+  PassengerTabBar,
+  PhoneGlyph,
+  PinGlyph,
+  SectionHeading,
+  StatusBadge,
+  TicketGlyph,
+} from '../../src/components/UI';
+import { CARD_SHADOW, COLORS } from '../../src/theme/tokens';
+import {
+  formatArrivalTime,
+  formatDateShort,
+  formatDeparture,
+  formatTimeOnly,
+  formatVND,
+} from '../../src/trips/tripFormatters';
 
-function statusMeta(status: BookingStatus): { label: string; color: string; bg: string } {
-  switch (status) {
-    case 'CONFIRMED':
-      return { label: 'Đã xác nhận', color: '#34d399', bg: '#064e3b' };
-    case 'PENDING':
-      return { label: 'Chờ xác nhận', color: '#fbbf24', bg: '#451a03' };
-    case 'PICKED_UP':
-      return { label: 'Đã lên xe', color: '#60a5fa', bg: '#1e3a8a' };
-    case 'COMPLETED':
-      return { label: 'Hoàn thành', color: '#a5b4fc', bg: '#312e81' };
-    case 'CANCELLED':
-      return { label: 'Đã hủy', color: '#f87171', bg: '#450a0a' };
-    case 'NO_SHOW':
-      return { label: 'Vắng mặt', color: '#94a3b8', bg: '#1e293b' };
-  }
+type TabGroup = 'UPCOMING' | 'COMPLETED' | 'CANCELLED';
+
+const TABS: [TabGroup, string][] = [
+  ['UPCOMING', 'Sắp đi'],
+  ['COMPLETED', 'Hoàn thành'],
+  ['CANCELLED', 'Đã hủy'],
+];
+
+function groupOf(status: BookingRecord['status']): TabGroup {
+  if (status === 'COMPLETED') return 'COMPLETED';
+  if (status === 'CANCELLED' || status === 'NO_SHOW') return 'CANCELLED';
+  return 'UPCOMING';
 }
 
 export default function PassengerBookingsScreen() {
-  const router = useRouter();
   const { session } = useAuth();
+  const router = useRouter();
 
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [tab, setTab] = useState<TabGroup>('UPCOMING');
+  const [selected, setSelected] = useState<BookingRecord | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [cancellingId, setCancellingId] = useState<number | null>(null);
-  const [confirmCancelId, setConfirmCancelId] = useState<number | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const loadBookings = useCallback(async () => {
-    if (!session?.accessToken) return;
-    setLoading(true);
-    setErrorMsg(null);
-    try {
-      const list = await getMyBookings(session.accessToken);
-      setBookings(list);
-    } catch (err: unknown) {
-      setErrorMsg(
-        err instanceof ApiError
-          ? err.message
-          : 'Không thể tải danh sách vé đã đặt',
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [session?.accessToken]);
+  const loadBookings = useCallback(
+    async (isRefresh = false) => {
+      if (!session?.accessToken) return;
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setErrorMsg(null);
+      try {
+        const list = await getMyBookings(session.accessToken);
+        setBookings(list);
+      } catch (err: unknown) {
+        setErrorMsg(
+          err instanceof ApiError ? err.message : 'Không thể tải danh sách vé đã đặt',
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [session?.accessToken],
+  );
 
-  useEffect(() => {
-    loadBookings();
-  }, [loadBookings]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadBookings(false);
+    }, [loadBookings]),
+  );
 
   async function handleCancelBooking(bookingId: number) {
     if (!session?.accessToken) return;
-    setCancellingId(bookingId);
+    setCancelling(true);
     setActionError(null);
     try {
       const updated = await cancelBooking(
@@ -86,270 +115,634 @@ export default function PassengerBookingsScreen() {
         generateIdempotencyKey('cancel'),
         'Hành khách chủ động hủy vé',
       );
-      setBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? updated : b)),
-      );
-      setConfirmCancelId(null);
+      setBookings(prev => prev.map(b => (b.id === bookingId ? updated : b)));
+      setSelected(updated);
+      setConfirmCancel(false);
     } catch (err: unknown) {
       setActionError(
-        err instanceof ApiError
-          ? err.message
-          : 'Không thể hủy vé lúc này. Vui lòng thử lại.',
+        err instanceof ApiError ? err.message : 'Không thể hủy vé lúc này. Vui lòng thử lại.',
       );
     } finally {
-      setCancellingId(null);
+      setCancelling(false);
     }
   }
 
-  function renderHeader() {
-    return (
-      <View style={styles.headerBox}>
-        <Pressable
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Quay lại"
-        >
-          <Text style={styles.back}>← Quay lại</Text>
-        </Pressable>
-        <Text style={styles.title}>Vé đã đặt của tôi</Text>
-        {actionError ? (
-          <View style={styles.actionErrorBox}>
-            <Text style={styles.actionErrorText}>⚠️ {actionError}</Text>
-          </View>
-        ) : null}
-      </View>
-    );
-  }
+  const list = bookings
+    .filter(b => groupOf(b.status) === tab)
+    .sort((a, b) => {
+      const ta = new Date(a.departureTime).getTime();
+      const tb = new Date(b.departureTime).getTime();
+      return tab === 'UPCOMING' ? ta - tb : tb - ta;
+    });
+
+  const counts: Record<TabGroup, number> = {
+    UPCOMING: bookings.filter(b => groupOf(b.status) === 'UPCOMING').length,
+    COMPLETED: bookings.filter(b => groupOf(b.status) === 'COMPLETED').length,
+    CANCELLED: bookings.filter(b => groupOf(b.status) === 'CANCELLED').length,
+  };
 
   function renderBookingItem({ item }: { item: BookingRecord }) {
-    const badge = statusMeta(item.status);
-    const canCancel = item.status === 'CONFIRMED' || item.status === 'PENDING';
-    const isConfirming = confirmCancelId === item.id;
-    const isCancelling = cancellingId === item.id;
-
     return (
-      <View style={styles.card}>
+      <Pressable
+        style={styles.card}
+        onPress={() => {
+          setActionError(null);
+          setConfirmCancel(false);
+          setSelected(item);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={`Xem chi tiết vé ${item.bookingCode}`}
+      >
         <View style={styles.cardHeader}>
           <Text style={styles.bookingCode}>{item.bookingCode}</Text>
-          <View style={[styles.badge, { backgroundColor: badge.bg }]}>
-            <Text style={[styles.badgeText, { color: badge.color }]}>
-              {badge.label}
-            </Text>
-          </View>
+          <StatusBadge status={item.status} />
         </View>
 
         <Text style={styles.routeText}>
           {item.origin} → {item.destination}
         </Text>
-        <Text style={styles.depText}>{formatDeparture(item.departureTime)}</Text>
+        <Text style={styles.depText}>
+          {formatDateShort(item.departureTime)} · {formatTimeOnly(item.departureTime)} ·{' '}
+          {item.companyName}
+        </Text>
 
-        <View style={styles.detailBox}>
-          <Text style={styles.detailRow}>📍 Đón: {item.pickup.label}</Text>
-          <Text style={styles.detailRow}>🏁 Trả: {item.dropoff.label}</Text>
-          <Text style={styles.detailRow}>
-            🚌 {item.companyName} • {item.vehicleType} ({item.vehiclePlate})
-          </Text>
-          <Text style={styles.detailRow}>👤 Tài xế: {item.driverName}</Text>
+        {/* Compact Pickup/Dropoff visual summary */}
+        <View style={styles.routeSnippetBox}>
+          <View style={styles.snippetLine}>
+            <View style={[styles.snippetDot, { backgroundColor: COLORS.teal }]} />
+            <Text style={styles.snippetText} numberOfLines={1}>
+              Đón: {item.pickup.label}
+            </Text>
+          </View>
+          <View style={styles.snippetLine}>
+            <View style={[styles.snippetDot, { backgroundColor: COLORS.danger }]} />
+            <Text style={styles.snippetText} numberOfLines={1}>
+              Trả: {item.dropoff.label}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.footerRow}>
-          <Text style={styles.seatText}>💺 {item.seatCount} ghế</Text>
+          <View style={styles.seatMetaRow}>
+            <TicketGlyph size={16} color={COLORS.slate500} />
+            <Text style={styles.seatText}>
+              {item.seatCount} chỗ · {item.vehiclePlate}
+            </Text>
+          </View>
           <Text style={styles.fareText}>{formatVND(item.fareEstimate)}</Text>
         </View>
-
-        {item.cancelReason ? (
-          <Text style={styles.cancelReasonText}>
-            Lý do hủy: {item.cancelReason}
-          </Text>
-        ) : null}
-
-        {canCancel ? (
-          isConfirming ? (
-            <View style={styles.confirmRow}>
-              <Text style={styles.confirmPrompt}>
-                Bạn chắc chắn muốn hủy vé này?
-              </Text>
-              <View style={styles.confirmActions}>
-                <Pressable
-                  style={styles.keepBtn}
-                  onPress={() => setConfirmCancelId(null)}
-                  disabled={isCancelling}
-                >
-                  <Text style={styles.keepBtnText}>Giữ vé</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.dangerBtn}
-                  onPress={() => handleCancelBooking(item.id)}
-                  disabled={isCancelling}
-                >
-                  {isCancelling ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text style={styles.dangerBtnText}>Xác nhận hủy</Text>
-                  )}
-                </Pressable>
-              </View>
-            </View>
-          ) : (
-            <Pressable
-              style={styles.cancelBtn}
-              onPress={() => {
-                setActionError(null);
-                setConfirmCancelId(item.id);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={`Hủy vé ${item.bookingCode}`}
-            >
-              <Text style={styles.cancelBtnText}>Hủy đặt vé</Text>
-            </Pressable>
-          )
-        ) : null}
-      </View>
+      </Pressable>
     );
   }
 
+  const canCancelSelected =
+    selected != null && (selected.status === 'CONFIRMED' || selected.status === 'PENDING');
+  const minutesUntilSelected =
+    selected != null
+      ? Math.floor((new Date(selected.departureTime).getTime() - Date.now()) / 60_000)
+      : 0;
+  const isWithinCancelCutoff = canCancelSelected && minutesUntilSelected < 30;
+
   return (
     <View style={styles.root}>
+      {/* Figma PA-11 Header + Segmented Pill Tabs */}
+      <View style={styles.topHeader}>
+        <Text style={styles.title}>Chuyến của tôi</Text>
+        <View style={styles.segmentWrap}>
+          {TABS.map(([key, label]) => {
+            const active = tab === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => setTab(key)}
+                style={[styles.segmentBtn, active && styles.segmentBtnActive]}
+              >
+                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                  {label}{' '}
+                  <Text style={styles.segmentCountText}>{counts[key]}</Text>
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
       {loading ? (
         <View style={styles.center}>
-          {renderHeader()}
-          <ActivityIndicator color="#6366f1" size="large" style={{ marginTop: 48 }} />
+          <ActivityIndicator color={COLORS.primary} size="large" />
           <Text style={styles.loadingText}>Đang tải danh sách vé…</Text>
         </View>
       ) : errorMsg ? (
         <View style={styles.center}>
-          {renderHeader()}
-          <Text style={styles.errorText}>⚠️ {errorMsg}</Text>
-          <Pressable style={styles.retryBtn} onPress={loadBookings}>
+          <Text style={styles.errorText}>{errorMsg}</Text>
+          <Pressable style={styles.retryBtn} onPress={() => void loadBookings(false)}>
             <Text style={styles.retryText}>Thử lại</Text>
           </Pressable>
         </View>
       ) : (
         <FlatList
-          data={bookings}
-          keyExtractor={(b) => String(b.id)}
-          ListHeaderComponent={renderHeader()}
+          data={list}
+          keyExtractor={b => String(b.id)}
+          renderItem={renderBookingItem}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void loadBookings(true)}
+              tintColor={COLORS.primary}
+            />
+          }
           ListEmptyComponent={
             <View style={styles.emptyBox}>
-              <Text style={styles.emptyIcon}>🎫</Text>
+              <View style={styles.emptyIconCircle}>
+                <TicketGlyph size={28} color={COLORS.primary} />
+              </View>
+              <Text style={styles.emptyTitle}>Chưa có chuyến nào</Text>
               <Text style={styles.emptyText}>
-                Bạn chưa có đặt chỗ nào.{'\n'}Hãy tìm chuyến xe và đặt vé ngay!
+                {tab === 'UPCOMING'
+                  ? 'Các chuyến xe bạn đặt sẽ xuất hiện tại đây.'
+                  : 'Chưa có chuyến nào thuộc nhóm này.'}
               </Text>
+              {tab === 'UPCOMING' ? (
+                <Pressable style={styles.retryBtn} onPress={() => router.replace('/(passenger)')}>
+                  <Text style={styles.retryText}>Tìm chuyến ngay</Text>
+                </Pressable>
+              ) : null}
             </View>
           }
-          renderItem={renderBookingItem}
-          contentContainerStyle={styles.list}
         />
       )}
+
+      <PassengerTabBar active="bookings" />
+
+      {/* Figma PA-12 Booking Detail Modal */}
+      <Modal
+        visible={!!selected}
+        animationType="slide"
+        onRequestClose={() => setSelected(null)}
+      >
+        {selected ? (
+          <View style={styles.root}>
+            <AppBar
+              title="Chi tiết đặt chỗ"
+              sub={selected.bookingCode}
+              onBack={() => {
+                setSelected(null);
+                setConfirmCancel(false);
+              }}
+              right={<StatusBadge status={selected.status} />}
+            />
+
+            <ScrollView contentContainerStyle={styles.detailScroll}>
+              <View style={styles.navyTicket}>
+                <Text style={styles.navyTicketLabel}>Mã đặt chỗ</Text>
+                <Text style={styles.navyTicketCode}>{selected.bookingCode}</Text>
+              </View>
+
+              <Card>
+                <SectionHeading>Chuyến đi</SectionHeading>
+                <Text style={styles.detailRoute}>
+                  {selected.origin} → {selected.destination}
+                </Text>
+                <View style={styles.detailTimeline}>
+                  <View>
+                    <Text style={styles.detailTimeBig}>{formatTimeOnly(selected.departureTime)}</Text>
+                    <Text style={styles.detailCitySub}>{selected.origin}</Text>
+                  </View>
+                  <View style={styles.detailDashWrap}>
+                    <View style={[styles.snippetDot, { backgroundColor: COLORS.teal }]} />
+                    <View style={styles.detailDashedLine} />
+                    <BusGlyph size={16} color={COLORS.primary} />
+                    <View style={styles.detailDashedLine} />
+                    <View style={[styles.snippetDot, { backgroundColor: COLORS.danger }]} />
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.detailTimeBig}>
+                      {selected.estimatedMinutes
+                        ? formatArrivalTime(selected.departureTime, selected.estimatedMinutes)
+                        : formatDateShort(selected.departureTime)}
+                    </Text>
+                    <Text style={styles.detailCitySub}>{selected.destination}</Text>
+                  </View>
+                </View>
+                <View style={styles.cardDivider} />
+                <KeyValueRow label="Khởi hành" value={formatDeparture(selected.departureTime)} />
+                <KeyValueRow label="Nhà xe" value={selected.companyName} />
+                <KeyValueRow label="Số chỗ" value={`${selected.seatCount} chỗ`} />
+              </Card>
+
+              <Card>
+                <SectionHeading>Điểm đón · trả</SectionHeading>
+                <View style={styles.locationBlock}>
+                  <View style={styles.locationItem}>
+                    <View style={[styles.locationBadge, { backgroundColor: COLORS.tealSoft }]}>
+                      <PinGlyph size={16} color={COLORS.tealDark} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.locationRole}>Điểm đón</Text>
+                      <Text style={styles.locationAddr}>{selected.pickup.label}</Text>
+                      {selected.pickup.latitude != null && selected.pickup.longitude != null ? (
+                        <Text style={styles.gpsBadgeText}>
+                          GPS: {Number(selected.pickup.latitude).toFixed(5)},{' '}
+                          {Number(selected.pickup.longitude).toFixed(5)}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  <View style={styles.locationItem}>
+                    <View style={[styles.locationBadge, { backgroundColor: COLORS.dangerSoft }]}>
+                      <PinGlyph size={16} color={COLORS.danger} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.locationRole}>Điểm trả</Text>
+                      <Text style={styles.locationAddr}>{selected.dropoff.label}</Text>
+                      {selected.dropoff.latitude != null && selected.dropoff.longitude != null ? (
+                        <Text style={styles.gpsBadgeText}>
+                          GPS: {Number(selected.dropoff.latitude).toFixed(5)},{' '}
+                          {Number(selected.dropoff.longitude).toFixed(5)}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                </View>
+              </Card>
+
+              <Card>
+                <SectionHeading>Tài xế &amp; phương tiện</SectionHeading>
+                <View style={styles.driverSummaryRow}>
+                  <View style={styles.driverAvatarCircle}>
+                    <Text style={styles.driverAvatarText}>
+                      {(selected.driverName.trim().split(/\s+/).pop()?.[0] ?? 'T').toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.driverTitle}>{selected.driverName}</Text>
+                    <Text style={styles.driverSub}>
+                      {selected.vehicleType} · Biển số {selected.vehiclePlate}
+                    </Text>
+                    {selected.driverPhone ? (
+                      <Text style={styles.driverPhoneSub}>{selected.driverPhone}</Text>
+                    ) : null}
+                  </View>
+                  {selected.driverPhone ? (
+                    <Pressable
+                      style={styles.callDriverBtn}
+                      onPress={() => {
+                        const tel = selected.driverPhone?.replace(/\s+/g, '');
+                        if (tel) void Linking.openURL(`tel:${tel}`);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Gọi tài xế"
+                    >
+                      <PhoneGlyph size={18} color={COLORS.primary} />
+                    </Pressable>
+                  ) : (
+                    <View style={styles.vehicleIconBox}>
+                      <CarGlyph size={20} color={COLORS.primary} />
+                    </View>
+                  )}
+                </View>
+              </Card>
+
+              <Card>
+                <SectionHeading>Thanh toán</SectionHeading>
+                <View style={styles.fareTotalRow}>
+                  <Text style={styles.fareTotalLabel}>Tổng giá vé</Text>
+                  <Text style={styles.fareTotalVal}>{formatVND(selected.fareEstimate)}</Text>
+                </View>
+                <Text style={styles.payNote}>Thanh toán trực tiếp cho tài xế khi lên xe.</Text>
+              </Card>
+
+              {canCancelSelected ? (
+                <View style={[styles.policyBox, isWithinCancelCutoff && styles.policyBoxBlocked]}>
+                  <Text
+                    style={[
+                      styles.policyBoxTitle,
+                      isWithinCancelCutoff && styles.policyBoxTitleBlocked,
+                    ]}
+                  >
+                    {isWithinCancelCutoff
+                      ? 'Đã khóa hủy đặt chỗ (còn dưới 30 phút)'
+                      : 'Chính sách hủy đặt chỗ'}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.policyBoxBody,
+                      isWithinCancelCutoff && styles.policyBoxBodyBlocked,
+                    ]}
+                  >
+                    {isWithinCancelCutoff
+                      ? 'Hành khách chỉ được hủy vé trước giờ khởi hành ít nhất 30 phút. Vui lòng liên hệ trực tiếp nhà xe nếu cần hỗ trợ khẩn cấp.'
+                      : `Bạn có thể hủy vé miễn phí trước giờ khởi hành ít nhất 30 phút (còn khoảng ${minutesUntilSelected} phút nữa tới giờ khởi hành).`}
+                  </Text>
+                </View>
+              ) : null}
+
+              {selected.cancelReason ? (
+                <View style={styles.cancelInfoBox}>
+                  <Text style={styles.cancelInfoText}>Lý do hủy: {selected.cancelReason}</Text>
+                </View>
+              ) : null}
+
+              {actionError ? (
+                <View style={styles.cancelInfoBox}>
+                  <Text style={styles.cancelInfoText}>{actionError}</Text>
+                </View>
+              ) : null}
+            </ScrollView>
+
+            {canCancelSelected && !isWithinCancelCutoff ? (
+              <View style={styles.detailFooter}>
+                {confirmCancel ? (
+                  <View style={styles.confirmBox}>
+                    <Text style={styles.confirmTitle}>
+                      Hủy đặt chỗ {selected.bookingCode}? Ghế sẽ được trả lại cho nhà xe.
+                    </Text>
+                    <View style={styles.confirmActions}>
+                      <Pressable
+                        style={styles.keepBtn}
+                        onPress={() => setConfirmCancel(false)}
+                        disabled={cancelling}
+                      >
+                        <Text style={styles.keepBtnText}>Giữ vé</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.dangerBtn}
+                        onPress={() => handleCancelBooking(selected.id)}
+                        disabled={cancelling}
+                      >
+                        {cancelling ? (
+                          <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                          <Text style={styles.dangerBtnText}>Xác nhận hủy</Text>
+                        )}
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <Pressable
+                    style={styles.cancelFullBtn}
+                    onPress={() => setConfirmCancel(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Hủy vé ${selected.bookingCode}`}
+                  >
+                    <Text style={styles.cancelFullBtnText}>Hủy đặt chỗ</Text>
+                  </Pressable>
+                )}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a' },
-  center: { flex: 1, paddingHorizontal: 24 },
-  headerBox: { paddingTop: 60, paddingBottom: 16 },
-  back: { color: '#6366f1', fontSize: 14, marginBottom: 12 },
-  title: { color: '#f1f5f9', fontSize: 22, fontWeight: '700' },
-  list: { paddingHorizontal: 24, paddingBottom: 40 },
-
-  actionErrorBox: {
-    backgroundColor: '#450a0a',
-    borderRadius: 10,
-    padding: 12,
+  root: { flex: 1, backgroundColor: COLORS.canvas },
+  topHeader: {
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.line,
+    paddingTop: 54,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  title: { fontSize: 25, fontWeight: '800', color: COLORS.navy, letterSpacing: -0.4 },
+  segmentWrap: {
     marginTop: 12,
-    borderWidth: 1,
-    borderColor: '#ef4444',
-  },
-  actionErrorText: { color: '#fca5a5', fontSize: 13 },
-
-  card: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  cardHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: COLORS.slate100,
+    borderRadius: 999,
+    padding: 4,
+  },
+  segmentBtn: {
+    flex: 1,
+    height: 38,
+    borderRadius: 999,
     alignItems: 'center',
-    marginBottom: 10,
+    justifyContent: 'center',
   },
-  bookingCode: { color: '#94a3b8', fontSize: 13, fontWeight: '700', letterSpacing: 1 },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  badgeText: { fontSize: 12, fontWeight: '700' },
+  segmentBtnActive: {
+    backgroundColor: COLORS.surface,
+    ...CARD_SHADOW,
+  },
+  segmentText: { fontSize: 13, fontWeight: '600', color: COLORS.slate500 },
+  segmentTextActive: { color: COLORS.primary, fontWeight: '700' },
+  segmentCountText: { fontSize: 11, opacity: 0.8 },
 
-  routeText: { color: '#f1f5f9', fontSize: 17, fontWeight: '700' },
-  depText: { color: '#6366f1', fontSize: 13, marginTop: 4, marginBottom: 12 },
-
-  detailBox: {
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    padding: 12,
+  listContent: { padding: 16, paddingBottom: 28 },
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    padding: 16,
     marginBottom: 12,
+    ...CARD_SHADOW,
   },
-  detailRow: { color: '#cbd5e1', fontSize: 13, marginBottom: 4 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  bookingCode: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.slate500,
+  },
+  routeText: { fontSize: 17, fontWeight: '800', color: COLORS.navy, marginTop: 8 },
+  depText: { fontSize: 13, color: COLORS.slate500, marginTop: 3 },
+
+  routeSnippetBox: {
+    marginTop: 10,
+    backgroundColor: COLORS.canvas,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 5,
+  },
+  snippetLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  snippetDot: { width: 7, height: 7, borderRadius: 4 },
+  snippetText: { fontSize: 12, color: COLORS.slate600, flex: 1 },
 
   footerRow: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.line,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  seatText: { color: '#e2e8f0', fontSize: 14, fontWeight: '600' },
-  fareText: { color: '#10b981', fontSize: 17, fontWeight: '800' },
-  cancelReasonText: { color: '#f87171', fontSize: 12, marginTop: 8 },
+  seatMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  seatText: { fontSize: 13, color: COLORS.slate600, fontWeight: '500' },
+  fareText: { fontSize: 17, fontWeight: '800', color: COLORS.navy },
 
-  cancelBtn: {
-    marginTop: 14,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ef4444',
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  loadingText: { color: COLORS.slate500, marginTop: 12 },
+  errorText: { color: COLORS.danger, textAlign: 'center', fontSize: 14 },
+  retryBtn: {
+    marginTop: 16,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
   },
-  cancelBtnText: { color: '#ef4444', fontSize: 13, fontWeight: '700' },
+  retryText: { color: '#ffffff', fontWeight: '700' },
+  emptyBox: { alignItems: 'center', paddingTop: 56, paddingHorizontal: 24 },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: COLORS.navy },
+  emptyText: { fontSize: 14, color: COLORS.slate500, marginTop: 6, textAlign: 'center' },
 
-  confirmRow: {
-    marginTop: 14,
-    backgroundColor: '#0f172a',
+  detailScroll: { padding: 16, gap: 14, paddingBottom: 28 },
+  navyTicket: {
+    backgroundColor: COLORS.navy,
+    borderRadius: 20,
+    padding: 18,
+  },
+  navyTicketLabel: { color: COLORS.slate300, fontSize: 12 },
+  navyTicketCode: {
+    color: COLORS.teal,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+    marginTop: 4,
+  },
+  detailRoute: { fontSize: 17, fontWeight: '800', color: COLORS.navy, marginBottom: 10 },
+  detailTimeline: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  detailTimeBig: { fontSize: 16, fontWeight: '800', color: COLORS.navy },
+  detailCitySub: { fontSize: 12, color: COLORS.slate500, marginTop: 2 },
+  detailDashWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  detailDashedLine: {
+    flex: 1,
+    borderTopWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: COLORS.slate300,
+  },
+  cardDivider: { height: 1, backgroundColor: COLORS.line, marginVertical: 10 },
+
+  locationBlock: { gap: 14 },
+  locationItem: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  locationBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationRole: { fontSize: 11, fontWeight: '600', color: COLORS.slate500 },
+  locationAddr: { fontSize: 14, fontWeight: '700', color: COLORS.navy, marginTop: 2, lineHeight: 19 },
+  gpsBadgeText: {
+    fontSize: 11,
+    fontFamily: 'monospace',
+    color: COLORS.primary,
+    marginTop: 3,
+    fontWeight: '700',
+  },
+
+  driverSummaryRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  driverAvatarCircle: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: COLORS.tealSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  driverAvatarText: { fontSize: 17, fontWeight: '800', color: COLORS.tealDark },
+  callDriverBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  driverTitle: { fontSize: 15, fontWeight: '700', color: COLORS.navy },
+  driverSub: { fontSize: 12, color: COLORS.slate500, marginTop: 2 },
+  driverPhoneSub: { fontSize: 12, color: COLORS.primary, fontWeight: '600', marginTop: 2 },
+
+  fareTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  fareTotalLabel: { fontSize: 14, color: COLORS.slate500, fontWeight: '600' },
+  fareTotalVal: { fontSize: 19, fontWeight: '800', color: COLORS.primary },
+  payNote: { fontSize: 12, color: COLORS.slate500, marginTop: 6 },
+
+  policyBox: {
+    backgroundColor: COLORS.primarySoft,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+    borderRadius: 14,
+    padding: 14,
+  },
+  policyBoxBlocked: {
+    backgroundColor: COLORS.warningSoft,
+    borderColor: '#fde68a',
+  },
+  policyBoxTitle: { fontSize: 13, fontWeight: '700', color: COLORS.primaryDark },
+  policyBoxTitleBlocked: { color: COLORS.warningText },
+  policyBoxBody: { fontSize: 12, color: COLORS.slate600, marginTop: 4, lineHeight: 18 },
+  policyBoxBodyBlocked: { color: COLORS.warningText },
+  cancelInfoBox: {
+    backgroundColor: COLORS.dangerSoft,
+    borderWidth: 1,
+    borderColor: '#fecaca',
     borderRadius: 12,
     padding: 12,
-    borderWidth: 1,
-    borderColor: '#ef4444',
   },
-  confirmPrompt: { color: '#fca5a5', fontSize: 13, marginBottom: 10, fontWeight: '600' },
+  cancelInfoText: { color: COLORS.danger, fontSize: 13, fontWeight: '500' },
+
+  detailFooter: {
+    backgroundColor: COLORS.surface,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.line,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 24,
+  },
+  cancelFullBtn: {
+    backgroundColor: COLORS.danger,
+    borderRadius: 12,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelFullBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+  confirmBox: { gap: 12 },
+  confirmTitle: { fontSize: 13, fontWeight: '600', color: COLORS.navy },
   confirmActions: { flexDirection: 'row', gap: 10 },
   keepBtn: {
     flex: 1,
-    backgroundColor: '#334155',
-    borderRadius: 8,
-    paddingVertical: 9,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    backgroundColor: COLORS.surface,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  keepBtnText: { color: '#f1f5f9', fontSize: 13, fontWeight: '600' },
+  keepBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.navy },
   dangerBtn: {
     flex: 1,
-    backgroundColor: '#ef4444',
-    borderRadius: 8,
-    paddingVertical: 9,
-    alignItems: 'center',
-  },
-  dangerBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-
-  loadingText: { color: '#64748b', textAlign: 'center', marginTop: 12 },
-  errorText: { color: '#ef4444', textAlign: 'center', marginTop: 32, fontSize: 14 },
-  retryBtn: {
-    marginTop: 16,
-    backgroundColor: '#6366f1',
+    height: 46,
     borderRadius: 12,
-    paddingVertical: 12,
+    backgroundColor: COLORS.danger,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  retryText: { color: '#fff', fontWeight: '600' },
-  emptyBox: { alignItems: 'center', paddingTop: 48 },
-  emptyIcon: { fontSize: 48 },
-  emptyText: { color: '#64748b', textAlign: 'center', marginTop: 14, lineHeight: 22 },
+  dangerBtnText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
 });
-

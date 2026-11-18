@@ -17,6 +17,9 @@ const LABELS: Record<string, string> = {
   COMPLETED: 'Đã hoàn thành',
   CANCELLED: 'Đã huỷ',
   ON_TRIP: 'Đang chạy',
+  CONFIRMED: 'Đã xác nhận',
+  PICKED_UP: 'Đã lên xe',
+  NO_SHOW: 'Vắng mặt',
 };
 
 const VARIANT_MAP: Record<string, BadgeVariant> = {
@@ -34,6 +37,9 @@ const VARIANT_MAP: Record<string, BadgeVariant> = {
   COMPLETED: 'neutral',
   CANCELLED: 'rejected',
   ON_TRIP: 'in-use',
+  CONFIRMED: 'approved',
+  PICKED_UP: 'in-use',
+  NO_SHOW: 'inactive',
 };
 
 interface BadgeProps {

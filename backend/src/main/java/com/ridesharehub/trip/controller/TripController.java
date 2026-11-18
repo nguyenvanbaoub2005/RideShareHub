@@ -34,6 +34,7 @@ import com.ridesharehub.trip.service.TripService;
  * </ul>
  */
 @RestController
+@RequestMapping("/api/v1/companies/{companyId}/trips")
 public class TripController {
 
     private final TripService tripService;

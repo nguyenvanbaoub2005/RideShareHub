@@ -1,11 +1,16 @@
 package com.ridesharehub.driver.service;
 
+import com.ridesharehub.auth.entity.User;
+import com.ridesharehub.auth.enums.UserRole;
+import com.ridesharehub.auth.repository.UserRepository;
 import com.ridesharehub.company.repository.CompanyRepository;
 import com.ridesharehub.company.entity.TransportCompany;
-import com.ridesharehub.auth.enums.UserRole;
 import com.ridesharehub.security.AuthPrincipal;
 import java.util.List;
+import java.util.Locale;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -21,10 +26,23 @@ public class DriverService {
 
     private final DriverRepository driverRepository;
     private final CompanyRepository companyRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public DriverService(DriverRepository driverRepository, CompanyRepository companyRepository) {
+    @Autowired
+    public DriverService(
+            DriverRepository driverRepository,
+            CompanyRepository companyRepository,
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder) {
         this.driverRepository = driverRepository;
         this.companyRepository = companyRepository;
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    public DriverService(DriverRepository driverRepository, CompanyRepository companyRepository) {
+        this(driverRepository, companyRepository, null, null);
     }
 
     // ================================================================== CRUD
@@ -32,9 +50,29 @@ public class DriverService {
     /** POST /api/v1/companies/{companyId}/drivers */
     public DriverResponse addDriver(Long companyId, DriverRequest req, AuthPrincipal principal) {
         TransportCompany company = requireApprovedAndOwned(companyId, principal);
-        Driver driver = driverRepository.save(
-                new Driver(company, req.fullName(), req.phone(), req.licenseNumber()));
-        return DriverResponse.from(driver);
+        Driver driver = new Driver(company, req.fullName(), req.phone(), req.licenseNumber());
+
+        boolean hasEmail = req.email() != null && !req.email().isBlank();
+        boolean hasPassword = req.password() != null && !req.password().isBlank();
+        if (hasEmail != hasPassword) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Both email and password are required to create a driver login account");
+        }
+        if (hasEmail && userRepository != null && passwordEncoder != null) {
+            String normalizedEmail = req.email().trim().toLowerCase(Locale.ROOT);
+            if (userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Email is already registered");
+            }
+            User driverUser = userRepository.save(new User(
+                    normalizedEmail,
+                    passwordEncoder.encode(req.password()),
+                    req.fullName().trim(),
+                    UserRole.DRIVER));
+            driver.assignUser(driverUser.getId());
+        }
+
+        Driver saved = driverRepository.save(driver);
+        return DriverResponse.from(saved);
     }
 
     /** GET /api/v1/companies/{companyId}/drivers */

@@ -1,8 +1,8 @@
 /**
  * Auth context — provides session state and auth actions to the whole app.
  *
- * Usage:
- *   const { session, signIn, signOut, loading } = useAuth();
+ * Automatically refreshes expired access tokens using the persisted refresh token
+ * and clears the session back to /login if refresh is rejected or missing.
  */
 
 import React, {
@@ -10,6 +10,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 import * as api from '../api/client';
@@ -25,6 +26,7 @@ interface AuthContextValue {
     password: string,
     fullName: string,
     role: 'PASSENGER' | 'TRANSPORT_COMPANY',
+    phone?: string,
   ) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -35,9 +37,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
 
+  const sessionRef = useRef<Session | null | undefined>(undefined);
+  sessionRef.current = session;
+  const refreshInFlightRef = useRef<Promise<string | null> | null>(null);
+
+  const expireSession = useCallback(async () => {
+    await clearSession();
+    sessionRef.current = null;
+    setSession(null);
+  }, []);
+
+  const tryRefreshToken = useCallback(async (): Promise<string | null> => {
+    if (refreshInFlightRef.current) {
+      return refreshInFlightRef.current;
+    }
+
+    const current = sessionRef.current ?? (await loadSession());
+    if (!current?.refreshToken) {
+      return null;
+    }
+
+    const promise = (async () => {
+      try {
+        const refreshed = await api.refreshTokens(current.refreshToken);
+        await saveSession(refreshed);
+        const next: Session = {
+          accessToken: refreshed.accessToken,
+          refreshToken: refreshed.refreshToken,
+          role: refreshed.role,
+        };
+        sessionRef.current = next;
+        setSession(next);
+        return refreshed.accessToken;
+      } catch {
+        return null;
+      } finally {
+        refreshInFlightRef.current = null;
+      }
+    })();
+
+    refreshInFlightRef.current = promise;
+    return promise;
+  }, []);
+
+  // Register handlers synchronously before any child route mounts
+  api.configureSessionHandlers({
+    tryRefreshToken,
+    onSessionExpired: expireSession,
+  });
+
   // Restore persisted session on mount
   useEffect(() => {
-    loadSession().then(setSession).catch(() => setSession(null));
+    loadSession()
+      .then(s => {
+        sessionRef.current = s;
+        setSession(s);
+      })
+      .catch(() => {
+        sessionRef.current = null;
+        setSession(null);
+      });
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
@@ -45,7 +104,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const auth = await api.login(email, password);
       await saveSession(auth);
-      setSession({ accessToken: auth.accessToken, refreshToken: auth.refreshToken, role: auth.role });
+      const next: Session = {
+        accessToken: auth.accessToken,
+        refreshToken: auth.refreshToken,
+        role: auth.role,
+      };
+      sessionRef.current = next;
+      setSession(next);
     } finally {
       setLoading(false);
     }
@@ -57,12 +122,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password: string,
       fullName: string,
       role: 'PASSENGER' | 'TRANSPORT_COMPANY',
+      phone?: string,
     ) => {
       setLoading(true);
       try {
-        const auth = await api.register(email, password, fullName, role);
+        const auth = await api.register(email, password, fullName, role, phone);
         await saveSession(auth);
-        setSession({ accessToken: auth.accessToken, refreshToken: auth.refreshToken, role: auth.role });
+        const next: Session = {
+          accessToken: auth.accessToken,
+          refreshToken: auth.refreshToken,
+          role: auth.role,
+        };
+        sessionRef.current = next;
+        setSession(next);
       } finally {
         setLoading(false);
       }
@@ -71,18 +143,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    if (!session) return;
+    const current = sessionRef.current;
+    if (!current) {
+      await expireSession();
+      return;
+    }
     setLoading(true);
     try {
-      await api.logout(session.accessToken, session.refreshToken);
+      await api.logout(current.accessToken, current.refreshToken);
     } catch {
       // Even if server logout fails, clear local session
     } finally {
-      await clearSession();
-      setSession(null);
+      await expireSession();
       setLoading(false);
     }
-  }, [session]);
+  }, [expireSession]);
 
   return (
     <AuthContext.Provider value={{ session, loading, signIn, signUp, signOut }}>

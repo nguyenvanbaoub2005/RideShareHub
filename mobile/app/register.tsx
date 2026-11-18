@@ -9,32 +9,34 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { ApiError } from '../src/api/client';
 import { useAuth } from '../src/session/AuthContext';
-
-type Role = 'PASSENGER' | 'TRANSPORT_COMPANY';
+import { EyeGlyph, UserGlyph } from '../src/components/UI';
+import { COLORS, PRIMARY_SHADOW } from '../src/theme/tokens';
 
 export default function RegisterScreen() {
   const { signUp, loading } = useAuth();
   const router = useRouter();
 
-  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [role] = useState<Role>('PASSENGER');
+  const [fullName, setFullName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   async function handleRegister() {
     setError(null);
-    if (!fullName.trim() || !email.trim() || !password) {
+    if (!email.trim() || !password || !fullName.trim()) {
       setError('Vui lòng điền đầy đủ thông tin.');
+      return;
+    }
+    if (phone.trim() && !/^(0|\+84)\d{8,10}$/.test(phone.replace(/\s+/g, ''))) {
+      setError('Số điện thoại không hợp lệ (vd: 0905 123 456).');
       return;
     }
     if (password.length < 8) {
@@ -45,12 +47,8 @@ export default function RegisterScreen() {
       setError('Mật khẩu xác nhận không khớp.');
       return;
     }
-    if (!agreedToTerms) {
-      setError('Vui lòng đồng ý với Điều khoản sử dụng.');
-      return;
-    }
     try {
-      await signUp(email.trim(), password, fullName.trim(), role);
+      await signUp(email.trim(), password, fullName.trim(), 'PASSENGER', phone.trim() || undefined);
     } catch (e) {
       if (e instanceof ApiError) {
         setError(e.statusCode === 409 ? 'Email này đã được đăng ký.' : e.message);
@@ -65,45 +63,58 @@ export default function RegisterScreen() {
       style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <StatusBar style="dark" />
       <ScrollView
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
       >
-        {/* Back button */}
-        <Pressable style={styles.backBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Quay lại">
-          <Text style={styles.backIcon}>‹</Text>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Quay lại"
+        >
+          <Text style={styles.backGlyph}>←</Text>
         </Pressable>
 
-        {/* Heading */}
-        <Text style={styles.heading}>Tạo tài khoản</Text>
-        <Text style={styles.sub}>Chỉ mất một phút để bắt đầu hành trình.</Text>
+        <Text style={styles.heading}>Đăng ký hành khách</Text>
+        <Text style={styles.sub}>Tạo tài khoản Hành khách để tìm chuyến và đặt vé xe ghép.</Text>
 
-        {/* Error */}
-        {error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>⚠ {error}</Text>
+        {/* Role policy notice */}
+        <View style={styles.noticeBox}>
+          <View style={styles.noticeBadge}>
+            <UserGlyph size={16} color={COLORS.primary} />
           </View>
-        )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.noticeTitle}>Tài khoản dành cho Hành khách</Text>
+            <Text style={styles.noticeDesc}>
+              • <Text style={{ fontWeight: '700' }}>Tài xế:</Text> do Nhà xe tạo tài khoản và phân công chuyến trên cổng Web.{'\n'}
+              • <Text style={{ fontWeight: '700' }}>Nhà xe:</Text> đăng ký và quản lý vận hành trên cổng Web RideShareHub.
+            </Text>
+          </View>
+        </View>
 
-        {/* Họ và tên */}
+        {error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
+
         <Text style={styles.label}>Họ và tên</Text>
         <TextInput
           style={styles.input}
           placeholder="Nguyễn Minh Anh"
-          placeholderTextColor={C.placeholder}
+          placeholderTextColor={COLORS.slate400}
           value={fullName}
           onChangeText={setFullName}
           editable={!loading}
-          autoCapitalize="words"
         />
 
-        {/* Email */}
         <Text style={styles.label}>Email</Text>
         <TextInput
           style={styles.input}
           placeholder="minhanh@email.com"
-          placeholderTextColor={C.placeholder}
+          placeholderTextColor={COLORS.slate400}
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
@@ -112,95 +123,70 @@ export default function RegisterScreen() {
           editable={!loading}
         />
 
-        {/* Số điện thoại */}
-        <Text style={styles.label}>Số điện thoại</Text>
+        <Text style={styles.label}>Số điện thoại (không bắt buộc)</Text>
         <TextInput
           style={styles.input}
           placeholder="0905 123 456"
-          placeholderTextColor={C.placeholder}
+          placeholderTextColor={COLORS.slate400}
           keyboardType="phone-pad"
           value={phone}
           onChangeText={setPhone}
           editable={!loading}
         />
 
-        {/* Mật khẩu */}
         <Text style={styles.label}>Mật khẩu</Text>
-        <View style={styles.inputWrap}>
+        <View style={styles.pwWrap}>
           <TextInput
-            style={styles.inputInner}
+            style={[styles.input, styles.pwInput]}
             placeholder="Tối thiểu 8 ký tự"
-            placeholderTextColor={C.placeholder}
+            placeholderTextColor={COLORS.slate400}
             secureTextEntry={!showPassword}
             value={password}
             onChangeText={setPassword}
             editable={!loading}
           />
-          <Pressable style={styles.eyeBtn} onPress={() => setShowPassword(v => !v)}>
-            <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁'}</Text>
+          <Pressable
+            style={styles.pwToggle}
+            onPress={() => setShowPassword(v => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+          >
+            <EyeGlyph open={showPassword} size={19} color={COLORS.slate500} />
           </Pressable>
         </View>
 
-        {/* Xác nhận mật khẩu */}
         <Text style={styles.label}>Xác nhận mật khẩu</Text>
-        <View style={styles.inputWrap}>
-          <TextInput
-            style={styles.inputInner}
-            placeholder="Nhập lại mật khẩu"
-            placeholderTextColor={C.placeholder}
-            secureTextEntry={!showConfirm}
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            editable={!loading}
-            returnKeyType="done"
-            onSubmitEditing={handleRegister}
-          />
-          <Pressable style={styles.eyeBtn} onPress={() => setShowConfirm(v => !v)}>
-            <Text style={styles.eyeIcon}>{showConfirm ? '🙈' : '👁'}</Text>
-          </Pressable>
-        </View>
+        <TextInput
+          style={styles.input}
+          placeholder="Nhập lại mật khẩu"
+          placeholderTextColor={COLORS.slate400}
+          secureTextEntry={!showPassword}
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          editable={!loading}
+        />
 
-        {/* Terms */}
-        <Pressable
-          style={styles.termsRow}
-          onPress={() => setAgreedToTerms(v => !v)}
-          disabled={loading}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: agreedToTerms }}
-        >
-          <View style={[styles.checkbox, agreedToTerms && styles.checkboxActive]}>
-            {agreedToTerms && <Text style={styles.checkmark}>✓</Text>}
-          </View>
-          <Text style={styles.termsText}>
-            Tôi đồng ý với{' '}
-            <Text style={styles.termsLink}>Điều khoản sử dụng</Text>
-          </Text>
-        </Pressable>
-
-        {/* Register button */}
         <Pressable
           style={[styles.btn, loading && styles.btnDisabled]}
           onPress={handleRegister}
           disabled={loading}
           accessibilityRole="button"
-          accessibilityLabel="Tạo tài khoản"
+          accessibilityLabel="Đăng ký"
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnText}>Tạo tài khoản</Text>
+            <Text style={styles.btnText}>Tạo tài khoản hành khách</Text>
           )}
         </Pressable>
 
-        {/* Login link */}
         <Pressable
           style={styles.linkRow}
           onPress={() => router.back()}
           accessibilityRole="link"
         >
           <Text style={styles.linkText}>
-            Đã có tài khoản?{' '}
-            <Text style={styles.link}>Đăng nhập</Text>
+            Đã có tài khoản? <Text style={styles.link}>Đăng nhập</Text>
           </Text>
         </Pressable>
       </ScrollView>
@@ -208,119 +194,92 @@ export default function RegisterScreen() {
   );
 }
 
-const C = {
-  bg: '#ffffff',
-  text: '#0f172a',
-  sub: '#64748b',
-  primary: '#2563eb',
-  placeholder: '#94a3b8',
-  border: '#e2e8f0',
-  inputBg: '#f8fafc',
-  error: '#dc2626',
-  errorBg: '#fef2f2',
-} as const;
-
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
-  scroll: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 56,
-    paddingBottom: 48,
-  },
-
-  // Back
+  root: { flex: 1, backgroundColor: COLORS.surface },
+  scroll: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 52, paddingBottom: 36 },
   backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#f1f5f9',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.slate100,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
+    marginBottom: 12,
   },
-  backIcon: { fontSize: 22, color: C.text, lineHeight: 28, marginLeft: -2 },
-
-  // Heading
-  heading: { color: C.text, fontSize: 28, fontWeight: '700', marginBottom: 6, letterSpacing: -0.3 },
-  sub: { color: C.sub, fontSize: 15, marginBottom: 24, lineHeight: 22 },
-
-  // Error
-  errorBox: {
-    backgroundColor: C.errorBg,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#fca5a5',
-  },
-  errorText: { color: C.error, fontSize: 14, lineHeight: 20 },
-
-  // Fields
-  label: { color: C.text, fontSize: 14, fontWeight: '500', marginBottom: 8, marginTop: 16 },
-  input: {
-    backgroundColor: C.inputBg,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    color: C.text,
-    fontSize: 15,
-  },
-  inputWrap: {
+  backGlyph: { fontSize: 18, fontWeight: '700', color: COLORS.navy },
+  heading: { color: COLORS.navy, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
+  sub: { color: COLORS.slate500, fontSize: 15, marginTop: 6, marginBottom: 12 },
+  noticeBox: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: C.inputBg,
+    gap: 10,
+    backgroundColor: COLORS.primarySoft,
     borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 12,
+    borderColor: '#c7d2fe',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 4,
   },
-  inputInner: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    color: C.text,
+  noticeBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  noticeTitle: { fontSize: 13, fontWeight: '700', color: COLORS.primaryDark },
+  noticeDesc: { fontSize: 12, color: COLORS.slate600, marginTop: 4, lineHeight: 18 },
+  errorBox: {
+    backgroundColor: COLORS.dangerSoft,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+  },
+  errorText: { color: COLORS.danger, fontSize: 13, fontWeight: '500' },
+  label: {
+    color: COLORS.navy,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 6,
+    marginTop: 14,
+  },
+  input: {
+    backgroundColor: COLORS.canvas,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 50,
+    color: COLORS.navy,
     fontSize: 15,
   },
-  eyeBtn: { paddingHorizontal: 14, paddingVertical: 14 },
-  eyeIcon: { fontSize: 18 },
-
-  // Terms
-  termsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20, gap: 10 },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: C.border,
-    backgroundColor: C.inputBg,
+  pwWrap: { position: 'relative' },
+  pwInput: { paddingRight: 48 },
+  pwToggle: {
+    position: 'absolute',
+    right: 6,
+    top: 0,
+    bottom: 0,
+    width: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxActive: { backgroundColor: C.primary, borderColor: C.primary },
-  checkmark: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  termsText: { flex: 1, color: C.sub, fontSize: 14 },
-  termsLink: { color: C.primary, fontWeight: '600' },
-
-  // Button
   btn: {
-    backgroundColor: C.primary,
+    backgroundColor: COLORS.primary,
     borderRadius: 14,
-    paddingVertical: 16,
+    height: 52,
     alignItems: 'center',
-    marginTop: 24,
-    shadowColor: C.primary,
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    justifyContent: 'center',
+    marginTop: 26,
+    ...PRIMARY_SHADOW,
   },
   btnDisabled: { opacity: 0.6 },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
-
-  // Login link
-  linkRow: { alignItems: 'center', marginTop: 32 },
-  linkText: { color: C.sub, fontSize: 14 },
-  link: { color: C.primary, fontWeight: '700' },
+  btnText: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
+  linkRow: { alignItems: 'center', marginTop: 22 },
+  linkText: { color: COLORS.slate600, fontSize: 14 },
+  link: { color: COLORS.primary, fontWeight: '700' },
 });

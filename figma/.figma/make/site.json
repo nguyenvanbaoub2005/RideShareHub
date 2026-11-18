@@ -1,0 +1,10 @@
+{
+  "description": "A shared-ride booking platform connecting passengers with transport companies for route search, trip bookings, driver coordination, and real-time tracking.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

@@ -9,6 +9,8 @@ import com.ridesharehub.booking.dto.CreateBookingRequest;
 import com.ridesharehub.booking.entity.Booking;
 import com.ridesharehub.booking.enums.BookingStatus;
 import com.ridesharehub.booking.repository.BookingRepository;
+import com.ridesharehub.company.entity.TransportCompany;
+import com.ridesharehub.company.repository.CompanyRepository;
 import com.ridesharehub.security.AuthPrincipal;
 import com.ridesharehub.trip.entity.Trip;
 import com.ridesharehub.trip.enums.TripStatus;
@@ -16,6 +18,9 @@ import com.ridesharehub.trip.repository.TripRepository;
 import com.ridesharehub.trip.service.TripSearchService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -28,8 +33,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * SP2-P2-01: Booking lifecycle (create, get, list, confirm, cancel, no-show).
- * SP2-P2-02: Atomic seat capacity reservation/release with pessimistic row locking
- *            and idempotency-key deduplication.
+ * SP2-P2-02: Atomic seat capacity reservation/release with pessimistic row
+ * locking
+ * and idempotency-key deduplication.
  */
 @Service
 @Transactional
@@ -42,7 +48,10 @@ public class BookingService {
     private final TripRepository tripRepository;
     private final UserRepository userRepository;
     private final TripSearchService tripSearchService;
+    private final CompanyRepository companyRepository;
     private final boolean autoConfirm;
+    private final long bookCutoffMinutes;
+    private final long cancelCutoffMinutes;
 
     @Autowired
     public BookingService(
@@ -50,12 +59,51 @@ public class BookingService {
             TripRepository tripRepository,
             UserRepository userRepository,
             TripSearchService tripSearchService,
-            @Value("${booking.policy.auto-confirm:true}") boolean autoConfirm) {
+            CompanyRepository companyRepository,
+            @Value("${booking.policy.auto-confirm:true}") boolean autoConfirm,
+            @Value("${booking.policy.book-cutoff-minutes:15}") long bookCutoffMinutes,
+            @Value("${booking.policy.cancel-cutoff-minutes:30}") long cancelCutoffMinutes) {
         this.bookingRepository = bookingRepository;
         this.tripRepository = tripRepository;
         this.userRepository = userRepository;
         this.tripSearchService = tripSearchService;
+        this.companyRepository = companyRepository;
         this.autoConfirm = autoConfirm;
+        this.bookCutoffMinutes = Math.max(0L, bookCutoffMinutes);
+        this.cancelCutoffMinutes = Math.max(0L, cancelCutoffMinutes);
+    }
+
+    public BookingService(
+            BookingRepository bookingRepository,
+            TripRepository tripRepository,
+            UserRepository userRepository,
+            TripSearchService tripSearchService,
+            CompanyRepository companyRepository,
+            boolean autoConfirm,
+            long cancelCutoffMinutes) {
+        this(bookingRepository, tripRepository, userRepository, tripSearchService,
+                companyRepository, autoConfirm, 15L, cancelCutoffMinutes);
+    }
+
+    public BookingService(
+            BookingRepository bookingRepository,
+            TripRepository tripRepository,
+            UserRepository userRepository,
+            TripSearchService tripSearchService,
+            CompanyRepository companyRepository,
+            boolean autoConfirm) {
+        this(bookingRepository, tripRepository, userRepository, tripSearchService,
+                companyRepository, autoConfirm, 15L, 30L);
+    }
+
+    public BookingService(
+            BookingRepository bookingRepository,
+            TripRepository tripRepository,
+            UserRepository userRepository,
+            TripSearchService tripSearchService,
+            boolean autoConfirm) {
+        this(bookingRepository, tripRepository, userRepository, tripSearchService,
+                null, autoConfirm, 15L, 30L);
     }
 
     public BookingService(
@@ -63,14 +111,16 @@ public class BookingService {
             TripRepository tripRepository,
             UserRepository userRepository,
             TripSearchService tripSearchService) {
-        this(bookingRepository, tripRepository, userRepository, tripSearchService, true);
+        this(bookingRepository, tripRepository, userRepository, tripSearchService, null, true);
     }
 
-    // ================================================================== Create Booking
+    // ================================================================== Create
+    // Booking
 
     /**
      * POST /api/v1/trips/{tripId}/bookings
-     * Atomically reserves requested seats under a pessimistic Trip lock and creates the Booking.
+     * Atomically reserves requested seats under a pessimistic Trip lock and creates
+     * the Booking.
      */
     public BookingResponse createBooking(
             Long tripId,
@@ -109,6 +159,19 @@ public class BookingService {
         if (trip.getStatus() != TripStatus.PUBLISHED) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, "Trip is not open for booking (status: " + trip.getStatus() + ")");
+        }
+        Instant now = Instant.now();
+        if (!trip.getDepartureTime().isAfter(now)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Chuyến xe đã khởi hành hoặc đang diễn ra, không thể đặt chỗ.");
+        }
+        if (bookCutoffMinutes > 0
+                && Duration.between(now, trip.getDepartureTime()).toMinutes() < bookCutoffMinutes) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Đã đóng nhận đặt chỗ (cần đặt trước giờ khởi hành ít nhất "
+                            + bookCutoffMinutes + " phút).");
         }
         if (trip.getAvailableSeats() < req.seatCount()) {
             throw new ResponseStatusException(
@@ -176,6 +239,30 @@ public class BookingService {
                 .toList();
     }
 
+    /** SP2-P2-06: GET /api/v1/companies/{companyId}/bookings/recent */
+    @Transactional(readOnly = true)
+    public List<BookingResponse> listRecentCompanyBookings(Long companyId, AuthPrincipal principal) {
+        requireAuthenticated(principal);
+        if (companyRepository != null) {
+            TransportCompany company = companyRepository.findById(companyId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Company not found"));
+            boolean isAdmin = principal.role() == UserRole.ADMIN;
+            boolean isOwner = company.getOwner().getId().equals(principal.userId());
+            if (!isAdmin && !isOwner) {
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN, "Access denied to this company's bookings");
+            }
+        } else if (principal.role() != UserRole.ADMIN && principal.role() != UserRole.TRANSPORT_COMPANY) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Access denied to this company's bookings");
+        }
+        return bookingRepository.findRecentByCompanyId(companyId)
+                .stream()
+                .limit(20)
+                .map(BookingResponse::from)
+                .toList();
+    }
+
     /** GET /api/v1/bookings/{bookingId} */
     @Transactional(readOnly = true)
     public BookingResponse getBooking(Long bookingId, AuthPrincipal principal) {
@@ -185,7 +272,8 @@ public class BookingService {
         return BookingResponse.from(booking);
     }
 
-    // ================================================================== Lifecycle Transitions
+    // ================================================================== Lifecycle
+    // Transitions
 
     /**
      * POST /api/v1/bookings/{bookingId}/cancel
@@ -209,15 +297,23 @@ public class BookingService {
         Trip trip = tripRepository.findByIdForUpdate(booking.getTrip().getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Trip not found"));
 
-        if (trip.getStatus() == TripStatus.COMPLETED) {
+        if (trip.getStatus() == TripStatus.COMPLETED || trip.getStatus() == TripStatus.IN_PROGRESS) {
             throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "Cannot cancel booking for a completed trip");
+                    HttpStatus.CONFLICT, "Cannot cancel booking when trip is in progress or completed");
         }
         if (booking.getStatus() != BookingStatus.PENDING
                 && booking.getStatus() != BookingStatus.CONFIRMED) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Booking cannot be cancelled in status: " + booking.getStatus());
+        }
+        if (principal.role() == UserRole.PASSENGER && cancelCutoffMinutes > 0) {
+            Instant cutoff = trip.getDepartureTime().minus(cancelCutoffMinutes, ChronoUnit.MINUTES);
+            if (!Instant.now().isBefore(cutoff)) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Không thể hủy vé trong vòng " + cancelCutoffMinutes + " phút trước giờ khởi hành");
+            }
         }
 
         String reason = req != null ? req.reason() : null;

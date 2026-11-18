@@ -284,6 +284,16 @@ class AuthenticationServiceTest {
             // save() never called because already invalidated
             verify(invalidatedTokenRepository, never()).save(any());
         }
+
+        @Test
+        void logout_without_principal_returns_unauthorized() {
+            User user = activeUser("dave@example.com", "pass", UserRole.PASSENGER, 30L);
+            String accessToken = JWT.createAccessToken(user);
+
+            assertThatThrownBy(() -> service.logout(new LogoutRequest(accessToken, null), null))
+                    .isInstanceOfSatisfying(ResponseStatusException.class,
+                            e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED));
+        }
     }
 
     // =========================================================================

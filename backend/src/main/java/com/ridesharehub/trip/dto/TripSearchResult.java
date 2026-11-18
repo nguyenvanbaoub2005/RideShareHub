@@ -19,8 +19,11 @@ public record TripSearchResult(
         BigDecimal fare,
         BigDecimal estimatedFare,
         int availableSeats,
+        int seatCapacity,
         String vehicleType,
+        String vehiclePlate,
         String driverName,
+        String companyName,
         TripStatus status
 ) {}
 

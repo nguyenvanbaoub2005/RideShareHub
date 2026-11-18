@@ -52,6 +52,7 @@ public class TripService {
     /** POST /api/v1/companies/{companyId}/trips */
     public TripResponse createTrip(Long companyId, TripRequest req, AuthPrincipal principal) {
         TransportCompany company = requireApprovedAndOwned(companyId, principal);
+        assertDepartureInFuture(req.departureTime());
 
         Route route = requireRouteOfCompany(req.routeId(), companyId);
         Vehicle vehicle = requireVehicleOfCompany(req.vehicleId(), companyId);
@@ -61,7 +62,7 @@ public class TripService {
         assertNoDriverConflict(driver.getId(), null, req.departureTime());
 
         Trip trip = tripRepository.save(
-                new Trip(route, company, vehicle, driver, req.departureTime(), req.fare()));
+                new Trip(route, company, vehicle, driver, req.departureTime(), req.fare(), req.note()));
         return TripResponse.from(trip);
     }
 
@@ -96,6 +97,7 @@ public class TripService {
     public TripResponse updateTrip(Long companyId, Long tripId,
             TripRequest req, AuthPrincipal principal) {
         requireApprovedAndOwned(companyId, principal);
+        assertDepartureInFuture(req.departureTime());
         Trip trip = requireTripOfCompany(tripId, companyId);
 
         Vehicle vehicle = requireVehicleOfCompany(req.vehicleId(), companyId);
@@ -116,6 +118,7 @@ public class TripService {
     public TripResponse publishTrip(Long companyId, Long tripId, AuthPrincipal principal) {
         requireApprovedAndOwned(companyId, principal);
         Trip trip = requireTripOfCompany(tripId, companyId);
+        assertDepartureInFuture(trip.getDepartureTime());
         try {
             trip.publish();
         } catch (IllegalStateException ex) {
@@ -211,6 +214,13 @@ public class TripService {
         if (tripRepository.existsVehicleConflict(vehicleId, exclude, from, to)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Vehicle is already assigned to another active trip in this time window");
+        }
+    }
+
+    private void assertDepartureInFuture(Instant departureTime) {
+        if (departureTime == null || !departureTime.isAfter(Instant.now())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Thời gian khởi hành phải nằm ở tương lai.");
         }
     }
 
