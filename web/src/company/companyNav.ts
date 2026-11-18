@@ -51,7 +51,10 @@ export function buildCompanyNav(
 
 export function initialsOf(name?: string, fallback = 'NX'): string {
   if (!name?.trim()) return fallback;
-  const parts = name.trim().split(/\s+/);
+  const cleaned = name
+    .trim()
+    .replace(/^(nhà xe|công ty(\s+tnhh|\s+cổ phần|\s+cp)?|doanh nghiệp|hợp tác xã|htx)\s+/i, '');
+  const parts = (cleaned || name.trim()).split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }

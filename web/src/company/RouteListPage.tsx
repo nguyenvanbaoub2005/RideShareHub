@@ -147,6 +147,8 @@ export function RouteListPage() {
               <Icon name="search" size={16} />
             </span>
             <input
+              id="route-search"
+              name="routeSearch"
               type="search"
               className="form__input"
               aria-label="Tìm tuyến đường"
@@ -212,7 +214,7 @@ export function RouteListPage() {
                     <td>{formatDuration(r.estimatedMinutes)}</td>
                     <td style={{ fontWeight: 600 }}>{formatVND(r.baseFare)}</td>
                     <td>
-                      <div style={{ display: 'flex', gap: 6 }}>
+                      <div style={{ display: 'flex', gap: 6, whiteSpace: 'nowrap' }}>
                         <Link
                           id={`edit-route-${r.id}`}
                           className="btn btn--ghost btn--sm"

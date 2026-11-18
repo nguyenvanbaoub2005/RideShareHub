@@ -137,6 +137,8 @@ export function DriverListPage() {
               <Icon name="search" size={16} />
             </span>
             <input
+              id="driver-search"
+              name="driverSearch"
               type="search"
               className="form__input"
               aria-label="Tìm tài xế"
@@ -146,6 +148,8 @@ export function DriverListPage() {
             />
           </div>
           <select
+            id="driver-status-filter"
+            name="driverStatusFilter"
             aria-label="Lọc trạng thái tài xế"
             className="form__select"
             style={{ width: 'auto', minWidth: 180 }}

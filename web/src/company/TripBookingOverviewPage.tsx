@@ -172,6 +172,8 @@ export function TripBookingOverviewPage() {
                   <Icon name="search" size={16} />
                 </span>
                 <input
+                  id="booking-search"
+                  name="bookingSearch"
                   type="search"
                   className="form__input"
                   aria-label="Tìm đặt chỗ"
@@ -181,6 +183,8 @@ export function TripBookingOverviewPage() {
                 />
               </div>
               <select
+                id="booking-status-filter"
+                name="bookingStatusFilter"
                 aria-label="Lọc trạng thái đặt chỗ"
                 className="form__select"
                 style={{ width: 'auto', minWidth: 180 }}

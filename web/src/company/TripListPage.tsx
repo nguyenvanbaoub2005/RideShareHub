@@ -181,6 +181,8 @@ export function TripListPage() {
               <Icon name="search" size={16} />
             </span>
             <input
+              id="trip-search"
+              name="tripSearch"
               type="search"
               className="form__input"
               aria-label="Tìm chuyến đi"
@@ -190,6 +192,8 @@ export function TripListPage() {
             />
           </div>
           <select
+            id="trip-status-filter"
+            name="tripStatusFilter"
             aria-label="Lọc trạng thái chuyến"
             className="form__select"
             style={{ width: 'auto', minWidth: 180 }}

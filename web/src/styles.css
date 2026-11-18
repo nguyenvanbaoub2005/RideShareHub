@@ -360,9 +360,11 @@ dl { margin: 0; }
   color: #ffffff;
   font-size: 0.875rem;
   font-weight: 600;
-  white-space: nowrap;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .sidebar__profile-sub {
@@ -417,9 +419,15 @@ dl { margin: 0; }
 }
 
 .sidebar__item--disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
   pointer-events: none;
+}
+
+.sidebar__lock {
+  margin-left: auto;
+  opacity: 0.75;
+  flex-shrink: 0;
 }
 
 .sidebar__badge {
@@ -1039,6 +1047,7 @@ dl { margin: 0; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-weight: 700;
   font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .data-table__center { text-align: center; }
@@ -1178,7 +1187,7 @@ dl { margin: 0; }
   place-items: center;
   flex-shrink: 0;
 }
-.timeline__dot--done { background: var(--blue-50); color: var(--primary); }
+.timeline__dot--done { background: var(--green-50); color: var(--green-700); }
 .timeline__dot--idle { background: var(--slate-100); color: var(--slate-400); }
 .timeline__line { width: 1px; height: 42px; background: var(--line); margin: 4px 0; }
 .timeline__body { padding-top: 4px; padding-bottom: 14px; }

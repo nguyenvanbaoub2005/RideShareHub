@@ -35,6 +35,19 @@ const EMPTY: FormState = {
   note: '',
 };
 
+const VEHICLE_STATUS_LABELS: Record<string, string> = {
+  AVAILABLE: 'Sẵn sàng',
+  IN_USE: 'Đang chạy',
+  MAINTENANCE: 'Bảo dưỡng',
+  INACTIVE: 'Ngưng hoạt động',
+};
+
+const DRIVER_STATUS_LABELS: Record<string, string> = {
+  AVAILABLE: 'Sẵn sàng',
+  ON_TRIP: 'Đang chạy',
+  INACTIVE: 'Ngưng hoạt động',
+};
+
 export function TripFormPage() {
   const { tripId } = useParams<{ tripId?: string }>();
   const { session } = useAuth();
@@ -177,7 +190,20 @@ export function TripFormPage() {
       </button>
 
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
-      {success && <SuccessAlert message={success} onDismiss={() => setSuccess(null)} />}
+      {success && (
+        <div className="stack" style={{ marginBottom: 16 }}>
+          <SuccessAlert message={success} onDismiss={() => setSuccess(null)} />
+          <div>
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm"
+              onClick={() => navigate('/company/trips')}
+            >
+              Về danh sách chuyến để xuất bản →
+            </button>
+          </div>
+        </div>
+      )}
 
       {loadingInitial ? (
         <PageSpinner />
@@ -223,7 +249,7 @@ export function TripFormPage() {
                     <option value="">-- Chọn xe --</option>
                     {vehicles.map(v => (
                       <option key={v.id} value={v.id}>
-                        {v.plateNumber} ({v.seatCapacity} chỗ · {v.status})
+                        {v.plateNumber} ({v.seatCapacity} chỗ · {VEHICLE_STATUS_LABELS[v.status] ?? v.status})
                       </option>
                     ))}
                   </select>
@@ -241,7 +267,7 @@ export function TripFormPage() {
                     <option value="">-- Chọn tài xế --</option>
                     {drivers.map(d => (
                       <option key={d.id} value={d.id}>
-                        {d.fullName} ({d.phone} · {d.status})
+                        {d.fullName} ({d.phone} · {DRIVER_STATUS_LABELS[d.status] ?? d.status})
                       </option>
                     ))}
                   </select>

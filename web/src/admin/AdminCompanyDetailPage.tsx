@@ -12,6 +12,7 @@ export function AdminCompanyDetailPage() {
   const { companyId } = useParams<{ companyId: string }>();
   const navigate = useNavigate();
   const [company, setCompany] = useState<CompanyResponse | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -27,6 +28,10 @@ export function AdminCompanyDetailPage() {
       .then(setCompany)
       .catch(() => setError('Không tải được thông tin nhà xe.'))
       .finally(() => setLoading(false));
+    adminApi
+      .listRegistrations()
+      .then(list => setPendingCount(list.filter(c => c.status === 'PENDING').length))
+      .catch(() => {});
   }, [id]);
 
   async function confirmApprove() {
@@ -35,6 +40,7 @@ export function AdminCompanyDetailPage() {
     try {
       const updated = await adminApi.decide(id, 'APPROVE');
       setCompany(updated);
+      setPendingCount(c => Math.max(0, c - 1));
       setSuccess(`Đã phê duyệt ${updated.name}. Nhà xe đủ điều kiện công bố chuyến.`);
       setConfirmType(null);
     } catch {
@@ -64,6 +70,7 @@ export function AdminCompanyDetailPage() {
     try {
       const updated = await adminApi.decide(id, 'REJECT', rejectReason.trim());
       setCompany(updated);
+      setPendingCount(c => Math.max(0, c - 1));
       setSuccess('Đã từ chối hồ sơ nhà xe. Lý do đã được ghi nhận.');
       setRejectReason('');
       setConfirmType(null);
@@ -81,8 +88,20 @@ export function AdminCompanyDetailPage() {
       label: 'Quản lý nhà xe',
       icon: 'building',
       active: true,
+      badge: pendingCount,
     },
   ];
+
+  const topbarStatus = pendingCount > 0 ? (
+    <button
+      type="button"
+      className="topbar__chip"
+      onClick={() => navigate('/admin/companies')}
+    >
+      <Icon name="clock" size={14} />
+      <span>{pendingCount} hồ sơ chờ duyệt</span>
+    </button>
+  ) : undefined;
 
   return (
     <AppShell
@@ -95,6 +114,7 @@ export function AdminCompanyDetailPage() {
       profileName="Quản trị viên"
       profileSub="Quyền quản lý hệ thống"
       profileInitials="AD"
+      topbarStatus={topbarStatus}
       logoutId="admin-detail-logout"
     >
       <button

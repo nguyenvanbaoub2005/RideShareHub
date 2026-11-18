@@ -171,6 +171,8 @@ export function AdminCompanyListPage() {
               <Icon name="search" size={16} />
             </span>
             <input
+              id="admin-company-search"
+              name="companySearch"
               type="search"
               className="form__input"
               aria-label="Tìm nhà xe"

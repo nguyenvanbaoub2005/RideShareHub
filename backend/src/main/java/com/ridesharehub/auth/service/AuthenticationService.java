@@ -72,6 +72,9 @@ public class AuthenticationService {
     }
 
     public void logout(LogoutRequest request, AuthPrincipal principal) {
+        if (principal == null) {
+            throw unauthorized("Unauthenticated");
+        }
         JwtService.VerifiedToken access;
         try {
             access = jwtService.verify(request.accessToken(), "access");

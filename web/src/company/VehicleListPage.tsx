@@ -138,6 +138,8 @@ export function VehicleListPage() {
               <Icon name="search" size={16} />
             </span>
             <input
+              id="vehicle-search"
+              name="vehicleSearch"
               type="search"
               className="form__input"
               aria-label="Tìm phương tiện"
@@ -147,6 +149,8 @@ export function VehicleListPage() {
             />
           </div>
           <select
+            id="vehicle-status-filter"
+            name="vehicleStatusFilter"
             aria-label="Lọc trạng thái xe"
             className="form__select"
             style={{ width: 'auto', minWidth: 180 }}

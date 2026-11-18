@@ -448,20 +448,25 @@ export function CompanyProfilePage() {
                 <ol className="timeline">
                   {[
                     ['Đã tiếp nhận hồ sơ', new Date(company.createdAt).toLocaleString('vi-VN'), true, 'check'],
-                    ['Xác minh thông tin', 'Đối chiếu thông tin doanh nghiệp', true, 'search'],
                     [
-                      company.status === 'APPROVED'
+                      'Xác minh thông tin',
+                      approved ? 'Đã đối chiếu thông tin doanh nghiệp' : 'Đối chiếu thông tin doanh nghiệp',
+                      approved,
+                      approved ? 'check' : 'clock',
+                    ],
+                    [
+                      approved
                         ? 'Đã phê duyệt'
                         : company.status === 'REJECTED'
                           ? 'Hồ sơ bị từ chối'
                           : 'Chờ quyết định phê duyệt',
-                      company.status === 'APPROVED'
+                      approved
                         ? 'Đã mở khóa toàn bộ chức năng vận hành'
                         : company.status === 'REJECTED'
                           ? 'Vui lòng kiểm tra lý do từ chối'
                           : 'Quản trị viên đang xem xét hồ sơ',
-                      company.status === 'APPROVED',
-                      'shield',
+                      approved,
+                      approved ? 'check' : company.status === 'REJECTED' ? 'x' : 'shield',
                     ],
                   ].map(([t, sub, done, icon], i) => (
                     <li key={String(t)} className="timeline__item">

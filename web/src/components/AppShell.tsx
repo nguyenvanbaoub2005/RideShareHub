@@ -80,7 +80,7 @@ export function AppShell({
         <div className="sidebar__profile">
           <span className="sidebar__avatar">{profileInitials}</span>
           <div style={{ minWidth: 0 }}>
-            <div className="sidebar__profile-name">{profileName}</div>
+            <div className="sidebar__profile-name" title={profileName}>{profileName}</div>
             <div className="sidebar__profile-sub">{profileSub}</div>
           </div>
         </div>
@@ -102,8 +102,12 @@ export function AppShell({
             >
               <Icon name={item.icon} size={18} />
               <span>{item.label}</span>
-              {item.badge !== undefined && item.badge > 0 && (
-                <span className="sidebar__badge">{item.badge}</span>
+              {item.disabled ? (
+                <Icon name="lock" size={14} className="sidebar__lock" />
+              ) : (
+                item.badge !== undefined && item.badge > 0 && (
+                  <span className="sidebar__badge">{item.badge}</span>
+                )
               )}
             </Link>
           ))}
