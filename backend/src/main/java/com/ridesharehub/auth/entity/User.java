@@ -24,6 +24,9 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
+    @Column(length = 20, unique = true)
+    private String phone;
+
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
@@ -57,10 +60,17 @@ public class User {
 
     public Long getId() { return id; }
     public String getEmail() { return email; }
+    public String getPhone() { return phone; }
     public String getPasswordHash() { return passwordHash; }
     public String getFullName() { return fullName; }
     public UserRole getRole() { return role; }
     public UserStatus getStatus() { return status; }
     public boolean isActive() { return status == UserStatus.ACTIVE; }
     public void lock() { this.status = UserStatus.LOCKED; }
+
+    public void updateProfile(String fullName, String phone) {
+        this.fullName = fullName;
+        this.phone = phone;
+        this.updatedAt = Instant.now();
+    }
 }

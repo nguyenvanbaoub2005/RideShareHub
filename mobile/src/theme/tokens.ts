@@ -1,7 +1,7 @@
 export const COLORS = {
-  primary: '#2563eb',
-  primaryDark: '#1d4ed8',
-  primarySoft: '#eff6ff',
+  primary: '#5438f5',
+  primaryDark: '#4328d6',
+  primarySoft: '#eef2ff',
   navy: '#0f172a',
   navySoft: '#1e293b',
   teal: '#14b8a6',
@@ -38,4 +38,12 @@ export const FLOAT_SHADOW = {
   shadowRadius: 16,
   shadowOffset: { width: 0, height: 6 },
   elevation: 6,
+} as const;
+
+export const PRIMARY_SHADOW = {
+  shadowColor: '#5438f5',
+  shadowOpacity: 0.28,
+  shadowRadius: 12,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 5,
 } as const;

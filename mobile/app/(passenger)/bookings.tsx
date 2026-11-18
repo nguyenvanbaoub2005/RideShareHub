@@ -1,13 +1,16 @@
 /**
- * SP2-P2-03 & SP2-P2-05: Passenger Bookings Screen — Figma PA-11 Tabs + PA-12 Detail Modal & Cancel Confirm.
+ * SP2-P2-03 & SP2-P2-05: Passenger Bookings Screen — Figma PA-11 Tabs + PA-12 Detail Modal & Cancel Policy.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,14 +26,25 @@ import {
 import { useAuth } from '../../src/session/AuthContext';
 import {
   AppBar,
+  BusGlyph,
+  CarGlyph,
   Card,
   KeyValueRow,
   PassengerTabBar,
+  PhoneGlyph,
+  PinGlyph,
   SectionHeading,
   StatusBadge,
+  TicketGlyph,
 } from '../../src/components/UI';
 import { CARD_SHADOW, COLORS } from '../../src/theme/tokens';
-import { formatDeparture, formatVND } from '../../src/trips/tripFormatters';
+import {
+  formatArrivalTime,
+  formatDateShort,
+  formatDeparture,
+  formatTimeOnly,
+  formatVND,
+} from '../../src/trips/tripFormatters';
 
 type TabGroup = 'UPCOMING' | 'COMPLETED' | 'CANCELLED';
 
@@ -48,35 +62,47 @@ function groupOf(status: BookingRecord['status']): TabGroup {
 
 export default function PassengerBookingsScreen() {
   const { session } = useAuth();
+  const router = useRouter();
 
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
   const [tab, setTab] = useState<TabGroup>('UPCOMING');
   const [selected, setSelected] = useState<BookingRecord | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const loadBookings = useCallback(async () => {
-    if (!session?.accessToken) return;
-    setLoading(true);
-    setErrorMsg(null);
-    try {
-      const list = await getMyBookings(session.accessToken);
-      setBookings(list);
-    } catch (err: unknown) {
-      setErrorMsg(
-        err instanceof ApiError ? err.message : 'Không thể tải danh sách vé đã đặt',
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [session?.accessToken]);
+  const loadBookings = useCallback(
+    async (isRefresh = false) => {
+      if (!session?.accessToken) return;
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setErrorMsg(null);
+      try {
+        const list = await getMyBookings(session.accessToken);
+        setBookings(list);
+      } catch (err: unknown) {
+        setErrorMsg(
+          err instanceof ApiError ? err.message : 'Không thể tải danh sách vé đã đặt',
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [session?.accessToken],
+  );
 
-  useEffect(() => {
-    loadBookings();
-  }, [loadBookings]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadBookings(false);
+    }, [loadBookings]),
+  );
 
   async function handleCancelBooking(bookingId: number) {
     if (!session?.accessToken) return;
@@ -101,7 +127,14 @@ export default function PassengerBookingsScreen() {
     }
   }
 
-  const list = bookings.filter(b => groupOf(b.status) === tab);
+  const list = bookings
+    .filter(b => groupOf(b.status) === tab)
+    .sort((a, b) => {
+      const ta = new Date(a.departureTime).getTime();
+      const tb = new Date(b.departureTime).getTime();
+      return tab === 'UPCOMING' ? ta - tb : tb - ta;
+    });
+
   const counts: Record<TabGroup, number> = {
     UPCOMING: bookings.filter(b => groupOf(b.status) === 'UPCOMING').length,
     COMPLETED: bookings.filter(b => groupOf(b.status) === 'COMPLETED').length,
@@ -124,14 +157,38 @@ export default function PassengerBookingsScreen() {
           <Text style={styles.bookingCode}>{item.bookingCode}</Text>
           <StatusBadge status={item.status} />
         </View>
+
         <Text style={styles.routeText}>
           {item.origin} → {item.destination}
         </Text>
         <Text style={styles.depText}>
-          {formatDeparture(item.departureTime)} · {item.companyName}
+          {formatDateShort(item.departureTime)} · {formatTimeOnly(item.departureTime)} ·{' '}
+          {item.companyName}
         </Text>
+
+        {/* Compact Pickup/Dropoff visual summary */}
+        <View style={styles.routeSnippetBox}>
+          <View style={styles.snippetLine}>
+            <View style={[styles.snippetDot, { backgroundColor: COLORS.teal }]} />
+            <Text style={styles.snippetText} numberOfLines={1}>
+              Đón: {item.pickup.label}
+            </Text>
+          </View>
+          <View style={styles.snippetLine}>
+            <View style={[styles.snippetDot, { backgroundColor: COLORS.danger }]} />
+            <Text style={styles.snippetText} numberOfLines={1}>
+              Trả: {item.dropoff.label}
+            </Text>
+          </View>
+        </View>
+
         <View style={styles.footerRow}>
-          <Text style={styles.seatText}>{item.seatCount} chỗ · {item.vehiclePlate}</Text>
+          <View style={styles.seatMetaRow}>
+            <TicketGlyph size={16} color={COLORS.slate500} />
+            <Text style={styles.seatText}>
+              {item.seatCount} chỗ · {item.vehiclePlate}
+            </Text>
+          </View>
           <Text style={styles.fareText}>{formatVND(item.fareEstimate)}</Text>
         </View>
       </Pressable>
@@ -140,6 +197,11 @@ export default function PassengerBookingsScreen() {
 
   const canCancelSelected =
     selected != null && (selected.status === 'CONFIRMED' || selected.status === 'PENDING');
+  const minutesUntilSelected =
+    selected != null
+      ? Math.floor((new Date(selected.departureTime).getTime() - Date.now()) / 60_000)
+      : 0;
+  const isWithinCancelCutoff = canCancelSelected && minutesUntilSelected < 30;
 
   return (
     <View style={styles.root}>
@@ -156,7 +218,8 @@ export default function PassengerBookingsScreen() {
                 style={[styles.segmentBtn, active && styles.segmentBtnActive]}
               >
                 <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                  {label} {counts[key]}
+                  {label}{' '}
+                  <Text style={styles.segmentCountText}>{counts[key]}</Text>
                 </Text>
               </Pressable>
             );
@@ -172,7 +235,7 @@ export default function PassengerBookingsScreen() {
       ) : errorMsg ? (
         <View style={styles.center}>
           <Text style={styles.errorText}>{errorMsg}</Text>
-          <Pressable style={styles.retryBtn} onPress={loadBookings}>
+          <Pressable style={styles.retryBtn} onPress={() => void loadBookings(false)}>
             <Text style={styles.retryText}>Thử lại</Text>
           </Pressable>
         </View>
@@ -182,10 +245,29 @@ export default function PassengerBookingsScreen() {
           keyExtractor={b => String(b.id)}
           renderItem={renderBookingItem}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void loadBookings(true)}
+              tintColor={COLORS.primary}
+            />
+          }
           ListEmptyComponent={
             <View style={styles.emptyBox}>
+              <View style={styles.emptyIconCircle}>
+                <TicketGlyph size={28} color={COLORS.primary} />
+              </View>
               <Text style={styles.emptyTitle}>Chưa có chuyến nào</Text>
-              <Text style={styles.emptyText}>Các chuyến thuộc nhóm này sẽ hiển thị tại đây.</Text>
+              <Text style={styles.emptyText}>
+                {tab === 'UPCOMING'
+                  ? 'Các chuyến xe bạn đặt sẽ xuất hiện tại đây.'
+                  : 'Chưa có chuyến nào thuộc nhóm này.'}
+              </Text>
+              {tab === 'UPCOMING' ? (
+                <Pressable style={styles.retryBtn} onPress={() => router.replace('/(passenger)')}>
+                  <Text style={styles.retryText}>Tìm chuyến ngay</Text>
+                </Pressable>
+              ) : null}
             </View>
           }
         />
@@ -222,28 +304,140 @@ export default function PassengerBookingsScreen() {
                 <Text style={styles.detailRoute}>
                   {selected.origin} → {selected.destination}
                 </Text>
+                <View style={styles.detailTimeline}>
+                  <View>
+                    <Text style={styles.detailTimeBig}>{formatTimeOnly(selected.departureTime)}</Text>
+                    <Text style={styles.detailCitySub}>{selected.origin}</Text>
+                  </View>
+                  <View style={styles.detailDashWrap}>
+                    <View style={[styles.snippetDot, { backgroundColor: COLORS.teal }]} />
+                    <View style={styles.detailDashedLine} />
+                    <BusGlyph size={16} color={COLORS.primary} />
+                    <View style={styles.detailDashedLine} />
+                    <View style={[styles.snippetDot, { backgroundColor: COLORS.danger }]} />
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.detailTimeBig}>
+                      {selected.estimatedMinutes
+                        ? formatArrivalTime(selected.departureTime, selected.estimatedMinutes)
+                        : formatDateShort(selected.departureTime)}
+                    </Text>
+                    <Text style={styles.detailCitySub}>{selected.destination}</Text>
+                  </View>
+                </View>
+                <View style={styles.cardDivider} />
                 <KeyValueRow label="Khởi hành" value={formatDeparture(selected.departureTime)} />
                 <KeyValueRow label="Nhà xe" value={selected.companyName} />
-                <KeyValueRow label="Số ghế" value={`${selected.seatCount} chỗ`} />
+                <KeyValueRow label="Số chỗ" value={`${selected.seatCount} chỗ`} />
               </Card>
 
               <Card>
-                <SectionHeading>Điểm đón · Điểm trả</SectionHeading>
-                <KeyValueRow label="Điểm đón" value={selected.pickup.label} />
-                <KeyValueRow label="Điểm trả" value={selected.dropoff.label} />
+                <SectionHeading>Điểm đón · trả</SectionHeading>
+                <View style={styles.locationBlock}>
+                  <View style={styles.locationItem}>
+                    <View style={[styles.locationBadge, { backgroundColor: COLORS.tealSoft }]}>
+                      <PinGlyph size={16} color={COLORS.tealDark} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.locationRole}>Điểm đón</Text>
+                      <Text style={styles.locationAddr}>{selected.pickup.label}</Text>
+                      {selected.pickup.latitude != null && selected.pickup.longitude != null ? (
+                        <Text style={styles.gpsBadgeText}>
+                          GPS: {Number(selected.pickup.latitude).toFixed(5)},{' '}
+                          {Number(selected.pickup.longitude).toFixed(5)}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  <View style={styles.locationItem}>
+                    <View style={[styles.locationBadge, { backgroundColor: COLORS.dangerSoft }]}>
+                      <PinGlyph size={16} color={COLORS.danger} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.locationRole}>Điểm trả</Text>
+                      <Text style={styles.locationAddr}>{selected.dropoff.label}</Text>
+                      {selected.dropoff.latitude != null && selected.dropoff.longitude != null ? (
+                        <Text style={styles.gpsBadgeText}>
+                          GPS: {Number(selected.dropoff.latitude).toFixed(5)},{' '}
+                          {Number(selected.dropoff.longitude).toFixed(5)}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                </View>
               </Card>
 
               <Card>
                 <SectionHeading>Tài xế &amp; phương tiện</SectionHeading>
-                <KeyValueRow label="Tài xế" value={selected.driverName} />
-                <KeyValueRow label="Phương tiện" value={`${selected.vehicleType} · ${selected.vehiclePlate}`} />
+                <View style={styles.driverSummaryRow}>
+                  <View style={styles.driverAvatarCircle}>
+                    <Text style={styles.driverAvatarText}>
+                      {(selected.driverName.trim().split(/\s+/).pop()?.[0] ?? 'T').toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.driverTitle}>{selected.driverName}</Text>
+                    <Text style={styles.driverSub}>
+                      {selected.vehicleType} · Biển số {selected.vehiclePlate}
+                    </Text>
+                    {selected.driverPhone ? (
+                      <Text style={styles.driverPhoneSub}>{selected.driverPhone}</Text>
+                    ) : null}
+                  </View>
+                  {selected.driverPhone ? (
+                    <Pressable
+                      style={styles.callDriverBtn}
+                      onPress={() => {
+                        const tel = selected.driverPhone?.replace(/\s+/g, '');
+                        if (tel) void Linking.openURL(`tel:${tel}`);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Gọi tài xế"
+                    >
+                      <PhoneGlyph size={18} color={COLORS.primary} />
+                    </Pressable>
+                  ) : (
+                    <View style={styles.vehicleIconBox}>
+                      <CarGlyph size={20} color={COLORS.primary} />
+                    </View>
+                  )}
+                </View>
               </Card>
 
               <Card>
                 <SectionHeading>Thanh toán</SectionHeading>
-                <KeyValueRow label="Tổng giá vé" value={formatVND(selected.fareEstimate)} strong />
+                <View style={styles.fareTotalRow}>
+                  <Text style={styles.fareTotalLabel}>Tổng giá vé</Text>
+                  <Text style={styles.fareTotalVal}>{formatVND(selected.fareEstimate)}</Text>
+                </View>
                 <Text style={styles.payNote}>Thanh toán trực tiếp cho tài xế khi lên xe.</Text>
               </Card>
+
+              {canCancelSelected ? (
+                <View style={[styles.policyBox, isWithinCancelCutoff && styles.policyBoxBlocked]}>
+                  <Text
+                    style={[
+                      styles.policyBoxTitle,
+                      isWithinCancelCutoff && styles.policyBoxTitleBlocked,
+                    ]}
+                  >
+                    {isWithinCancelCutoff
+                      ? 'Đã khóa hủy đặt chỗ (còn dưới 30 phút)'
+                      : 'Chính sách hủy đặt chỗ'}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.policyBoxBody,
+                      isWithinCancelCutoff && styles.policyBoxBodyBlocked,
+                    ]}
+                  >
+                    {isWithinCancelCutoff
+                      ? 'Hành khách chỉ được hủy vé trước giờ khởi hành ít nhất 30 phút. Vui lòng liên hệ trực tiếp nhà xe nếu cần hỗ trợ khẩn cấp.'
+                      : `Bạn có thể hủy vé miễn phí trước giờ khởi hành ít nhất 30 phút (còn khoảng ${minutesUntilSelected} phút nữa tới giờ khởi hành).`}
+                  </Text>
+                </View>
+              ) : null}
 
               {selected.cancelReason ? (
                 <View style={styles.cancelInfoBox}>
@@ -258,7 +452,7 @@ export default function PassengerBookingsScreen() {
               ) : null}
             </ScrollView>
 
-            {canCancelSelected ? (
+            {canCancelSelected && !isWithinCancelCutoff ? (
               <View style={styles.detailFooter}>
                 {confirmCancel ? (
                   <View style={styles.confirmBox}>
@@ -336,6 +530,7 @@ const styles = StyleSheet.create({
   },
   segmentText: { fontSize: 13, fontWeight: '600', color: COLORS.slate500 },
   segmentTextActive: { color: COLORS.primary, fontWeight: '700' },
+  segmentCountText: { fontSize: 11, opacity: 0.8 },
 
   listContent: { padding: 16, paddingBottom: 28 },
   card: {
@@ -354,8 +549,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.slate500,
   },
-  routeText: { fontSize: 17, fontWeight: '700', color: COLORS.navy, marginTop: 8 },
-  depText: { fontSize: 13, color: COLORS.slate500, marginTop: 4 },
+  routeText: { fontSize: 17, fontWeight: '800', color: COLORS.navy, marginTop: 8 },
+  depText: { fontSize: 13, color: COLORS.slate500, marginTop: 3 },
+
+  routeSnippetBox: {
+    marginTop: 10,
+    backgroundColor: COLORS.canvas,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 5,
+  },
+  snippetLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  snippetDot: { width: 7, height: 7, borderRadius: 4 },
+  snippetText: { fontSize: 12, color: COLORS.slate600, flex: 1 },
+
   footerRow: {
     marginTop: 12,
     paddingTop: 12,
@@ -365,8 +573,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  seatMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   seatText: { fontSize: 13, color: COLORS.slate600, fontWeight: '500' },
-  fareText: { fontSize: 16, fontWeight: '800', color: COLORS.navy },
+  fareText: { fontSize: 17, fontWeight: '800', color: COLORS.navy },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   loadingText: { color: COLORS.slate500, marginTop: 12 },
@@ -379,9 +588,18 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   retryText: { color: '#ffffff', fontWeight: '700' },
-  emptyBox: { alignItems: 'center', paddingTop: 56 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: COLORS.navy },
-  emptyText: { fontSize: 14, color: COLORS.slate500, marginTop: 6 },
+  emptyBox: { alignItems: 'center', paddingTop: 56, paddingHorizontal: 24 },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: COLORS.navy },
+  emptyText: { fontSize: 14, color: COLORS.slate500, marginTop: 6, textAlign: 'center' },
 
   detailScroll: { padding: 16, gap: 14, paddingBottom: 28 },
   navyTicket: {
@@ -397,8 +615,88 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     marginTop: 4,
   },
-  detailRoute: { fontSize: 17, fontWeight: '700', color: COLORS.navy, marginBottom: 8 },
+  detailRoute: { fontSize: 17, fontWeight: '800', color: COLORS.navy, marginBottom: 10 },
+  detailTimeline: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  detailTimeBig: { fontSize: 16, fontWeight: '800', color: COLORS.navy },
+  detailCitySub: { fontSize: 12, color: COLORS.slate500, marginTop: 2 },
+  detailDashWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  detailDashedLine: {
+    flex: 1,
+    borderTopWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: COLORS.slate300,
+  },
+  cardDivider: { height: 1, backgroundColor: COLORS.line, marginVertical: 10 },
+
+  locationBlock: { gap: 14 },
+  locationItem: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  locationBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationRole: { fontSize: 11, fontWeight: '600', color: COLORS.slate500 },
+  locationAddr: { fontSize: 14, fontWeight: '700', color: COLORS.navy, marginTop: 2, lineHeight: 19 },
+  gpsBadgeText: {
+    fontSize: 11,
+    fontFamily: 'monospace',
+    color: COLORS.primary,
+    marginTop: 3,
+    fontWeight: '700',
+  },
+
+  driverSummaryRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  driverAvatarCircle: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: COLORS.tealSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  driverAvatarText: { fontSize: 17, fontWeight: '800', color: COLORS.tealDark },
+  callDriverBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  driverTitle: { fontSize: 15, fontWeight: '700', color: COLORS.navy },
+  driverSub: { fontSize: 12, color: COLORS.slate500, marginTop: 2 },
+  driverPhoneSub: { fontSize: 12, color: COLORS.primary, fontWeight: '600', marginTop: 2 },
+
+  fareTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  fareTotalLabel: { fontSize: 14, color: COLORS.slate500, fontWeight: '600' },
+  fareTotalVal: { fontSize: 19, fontWeight: '800', color: COLORS.primary },
   payNote: { fontSize: 12, color: COLORS.slate500, marginTop: 6 },
+
+  policyBox: {
+    backgroundColor: COLORS.primarySoft,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+    borderRadius: 14,
+    padding: 14,
+  },
+  policyBoxBlocked: {
+    backgroundColor: COLORS.warningSoft,
+    borderColor: '#fde68a',
+  },
+  policyBoxTitle: { fontSize: 13, fontWeight: '700', color: COLORS.primaryDark },
+  policyBoxTitleBlocked: { color: COLORS.warningText },
+  policyBoxBody: { fontSize: 12, color: COLORS.slate600, marginTop: 4, lineHeight: 18 },
+  policyBoxBodyBlocked: { color: COLORS.warningText },
   cancelInfoBox: {
     backgroundColor: COLORS.dangerSoft,
     borderWidth: 1,

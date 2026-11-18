@@ -2,10 +2,14 @@ package com.ridesharehub.trip.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +30,8 @@ public class TripSearchService {
     /** Maximum results per search to avoid unbounded queries. */
     private static final int PAGE_SIZE = 50;
 
+    private static final ZoneId SEARCH_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+
     /**
      * Fare surcharge tiers (SP2-P1-02 V1 policy):
      *  < 20 % remaining → +20 % surcharge
@@ -38,22 +44,45 @@ public class TripSearchService {
     private static final double     THRESHOLD_MEDIUM = 0.50;
 
     private final TripRepository tripRepository;
+    private final long bookCutoffMinutes;
+    private final Clock clock;
+
+    @Autowired
+    public TripSearchService(
+            TripRepository tripRepository,
+            @Value("${booking.policy.book-cutoff-minutes:15}") long bookCutoffMinutes) {
+        this(tripRepository, bookCutoffMinutes, Clock.systemUTC());
+    }
 
     public TripSearchService(TripRepository tripRepository) {
+        this(tripRepository, 15L, Clock.systemUTC());
+    }
+
+    public TripSearchService(TripRepository tripRepository, long bookCutoffMinutes, Clock clock) {
         this.tripRepository = tripRepository;
+        this.bookCutoffMinutes = Math.max(0L, bookCutoffMinutes);
+        this.clock = clock;
     }
 
     /**
      * Searches PUBLISHED trips matching the given criteria and
      * appends V1 estimated fare to each result.
+     * Excludes trips that have already departed or are within the booking cutoff window.
      */
     public List<TripSearchResult> search(TripSearchRequest request) {
-        Instant from = null;
+        Instant minBookableDeparture = clock.instant().plus(Duration.ofMinutes(bookCutoffMinutes));
+
+        Instant from = minBookableDeparture;
         Instant to   = null;
         if (request.date() != null) {
             LocalDate date = request.date();
-            from = date.atStartOfDay(ZoneOffset.UTC).toInstant();
-            to   = date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+            Instant dayStart = date.atStartOfDay(SEARCH_ZONE).toInstant();
+            Instant dayEnd   = date.plusDays(1).atStartOfDay(SEARCH_ZONE).toInstant();
+            if (!dayEnd.isAfter(minBookableDeparture)) {
+                return List.of();
+            }
+            from = dayStart.isBefore(minBookableDeparture) ? minBookableDeparture : dayStart;
+            to   = dayEnd;
         }
 
         String origin      = blankToNull(request.origin());
@@ -65,7 +94,7 @@ public class TripSearchService {
                 PageRequest.of(0, PAGE_SIZE));
 
         return trips.stream()
-                .map(t -> toResult(t, minSeats))
+                .map(t -> toResult(t, minSeats, minBookableDeparture))
                 .filter(r -> r != null)
                 .toList();
     }
@@ -74,9 +103,13 @@ public class TripSearchService {
 
     /**
      * Maps a Trip to a TripSearchResult.
-     * Returns null if available seats < minSeats (filtered out by caller).
+     * Returns null if available seats < minSeats or trip has already passed booking cutoff.
      */
-    private TripSearchResult toResult(Trip trip, int minSeats) {
+    private TripSearchResult toResult(Trip trip, int minSeats, Instant minBookableDeparture) {
+        if (trip.getDepartureTime() == null || trip.getDepartureTime().isBefore(minBookableDeparture)) {
+            return null;
+        }
+
         int capacity      = trip.getVehicle().getSeatCapacity();
         int bookedSeats   = trip.getBookedSeats();
         int availableSeats = capacity - bookedSeats;
@@ -125,12 +158,12 @@ public class TripSearchService {
         } else {
             surcharge = BigDecimal.ZERO;
         }
-        return baseFare.multiply(BigDecimal.ONE.add(surcharge))
-                       .setScale(2, RoundingMode.HALF_UP);
+        return baseFare
+                .multiply(BigDecimal.ONE.add(surcharge))
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
-    private static String blankToNull(String s) {
-        return (s == null || s.isBlank()) ? null : s.strip();
+    private static String blankToNull(String value) {
+        return (value == null || value.isBlank()) ? null : value.strip();
     }
 }
-

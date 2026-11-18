@@ -12,8 +12,10 @@ import com.ridesharehub.company.entity.Vehicle;
 import com.ridesharehub.driver.entity.Driver;
 import com.ridesharehub.route.entity.Route;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,14 +28,11 @@ import com.ridesharehub.trip.repository.TripRepository;
 
 /**
  * SP2-P1-01 / SP2-P1-02 unit tests for TripSearchService.
- *
- * Tests verify:
- *  - search delegates to repository with correct parameters
- *  - results are filtered by minSeats
- *  - V1 fare estimation surcharge tiers (SP2-P1-02)
- *  - blank/null origin/destination treated as "no filter"
  */
 class TripSearchServiceTest {
+
+    private static final Instant FIXED_NOW = Instant.parse("2026-11-10T06:00:00Z");
+    private static final Instant EXPECTED_CUTOFF = Instant.parse("2026-11-10T06:15:00Z");
 
     private TripRepository tripRepository;
     private TripSearchService service;
@@ -41,14 +40,14 @@ class TripSearchServiceTest {
     @BeforeEach
     void setUp() {
         tripRepository = mock(TripRepository.class);
-        service = new TripSearchService(tripRepository);
+        service = new TripSearchService(tripRepository, 15L, Clock.fixed(FIXED_NOW, ZoneOffset.UTC));
     }
 
     // ------------------------------------------------------------------ search delegation
 
     @Test
-    void search_withNoFilters_delegatesToRepository() {
-        when(tripRepository.searchPublished(isNull(), isNull(), isNull(), isNull(), any(Pageable.class)))
+    void search_withNoFilters_passesBookCutoffThreshold() {
+        when(tripRepository.searchPublished(isNull(), isNull(), eq(EXPECTED_CUTOFF), isNull(), any(Pageable.class)))
                 .thenReturn(List.of());
 
         List<TripSearchResult> results = service.search(new TripSearchRequest(null, null, null, null));
@@ -58,31 +57,43 @@ class TripSearchServiceTest {
 
     @Test
     void search_withOriginAndDestination_passesFiltersToRepository() {
-        when(tripRepository.searchPublished(eq("Hà Nội"), eq("Đà Nẵng"), isNull(), isNull(), any(Pageable.class)))
+        when(tripRepository.searchPublished(eq("Hà Nội"), eq("Đà Nẵng"), eq(EXPECTED_CUTOFF), isNull(), any(Pageable.class)))
                 .thenReturn(List.of());
 
         service.search(new TripSearchRequest("Hà Nội", "Đà Nẵng", null, null));
-        // No assertion on results — just verifying the right args reach the repository.
     }
 
     @Test
     void search_withBlankOrigin_treatedAsNull() {
-        when(tripRepository.searchPublished(isNull(), isNull(), isNull(), isNull(), any(Pageable.class)))
+        when(tripRepository.searchPublished(isNull(), isNull(), eq(EXPECTED_CUTOFF), isNull(), any(Pageable.class)))
                 .thenReturn(List.of());
 
         service.search(new TripSearchRequest("   ", "", null, null));
     }
 
     @Test
-    void search_withDate_computesDayBoundaries() {
-        // The from/to arguments should be non-null when date is provided.
+    void search_withFutureDate_computesDayBoundaries() {
         when(tripRepository.searchPublished(
                 isNull(), isNull(),
                 any(Instant.class), any(Instant.class),
                 any(Pageable.class)))
                 .thenReturn(List.of());
 
-        service.search(new TripSearchRequest(null, null, LocalDate.of(2026, 11, 5), null));
+        service.search(new TripSearchRequest(null, null, LocalDate.of(2026, 11, 15), null));
+    }
+
+    @Test
+    void search_excludesTripsAlreadyDepartedOrWithinBookCutoff() {
+        Trip alreadyDeparted = buildPublishedTrip(10, Instant.parse("2026-11-10T05:45:00Z"));
+        Trip withinCutoff = buildPublishedTrip(10, Instant.parse("2026-11-10T06:10:00Z"));
+        Trip openFutureTrip = buildPublishedTrip(10, Instant.parse("2026-11-10T08:00:00Z"));
+        when(tripRepository.searchPublished(any(), any(), any(), any(), any(Pageable.class)))
+                .thenReturn(List.of(alreadyDeparted, withinCutoff, openFutureTrip));
+
+        List<TripSearchResult> results = service.search(new TripSearchRequest(null, null, null, 1));
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).departureTime()).isEqualTo(Instant.parse("2026-11-10T08:00:00Z"));
     }
 
     // ------------------------------------------------------------------ minSeats filter
@@ -181,6 +192,10 @@ class TripSearchServiceTest {
     // ------------------------------------------------------------------ helper
 
     private Trip buildPublishedTrip(int seatCapacity) {
+        return buildPublishedTrip(seatCapacity, Instant.parse("2026-11-10T08:00:00Z"));
+    }
+
+    private Trip buildPublishedTrip(int seatCapacity, Instant departureTime) {
         TransportCompany company = mock(TransportCompany.class);
         when(company.getId()).thenReturn(1L);
 
@@ -204,7 +219,7 @@ class TripSearchServiceTest {
         when(trip.getCompany()).thenReturn(company);
         when(trip.getVehicle()).thenReturn(vehicle);
         when(trip.getDriver()).thenReturn(driver);
-        when(trip.getDepartureTime()).thenReturn(Instant.parse("2026-11-10T08:00:00Z"));
+        when(trip.getDepartureTime()).thenReturn(departureTime);
         when(trip.getFare()).thenReturn(new BigDecimal("150000.00"));
         when(trip.getStatus()).thenReturn(TripStatus.PUBLISHED);
 

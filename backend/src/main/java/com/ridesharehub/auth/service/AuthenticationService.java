@@ -12,6 +12,8 @@ import com.ridesharehub.auth.dto.LoginRequest;
 import com.ridesharehub.auth.dto.LogoutRequest;
 import com.ridesharehub.auth.dto.RefreshRequest;
 import com.ridesharehub.auth.dto.RegisterRequest;
+import com.ridesharehub.auth.dto.UpdateProfileRequest;
+import com.ridesharehub.auth.dto.UserProfileResponse;
 import com.ridesharehub.auth.entity.InvalidatedToken;
 import com.ridesharehub.auth.entity.User;
 import com.ridesharehub.auth.enums.UserRole;
@@ -41,8 +43,12 @@ public class AuthenticationService {
         if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email is already registered");
         }
-        User user = userRepository.save(new User(email, passwordEncoder.encode(request.password()),
-                request.fullName().trim(), request.role()));
+        User newUser = new User(email, passwordEncoder.encode(request.password()),
+                request.fullName().trim(), request.role());
+        if (request.phone() != null && !request.phone().isBlank()) {
+            newUser.updateProfile(request.fullName().trim(), request.phone().trim());
+        }
+        User user = userRepository.save(newUser);
         return tokensFor(user);
     }
 
@@ -97,6 +103,31 @@ public class AuthenticationService {
             }
             invalidate(refresh);
         }
+    }
+
+    public UserProfileResponse getCurrentUserProfile(AuthPrincipal principal) {
+        if (principal == null) {
+            throw unauthorized("Unauthenticated");
+        }
+        User user = userRepository.findById(principal.userId())
+                .filter(User::isActive)
+                .orElseThrow(() -> unauthorized("User not found"));
+        return UserProfileResponse.from(user);
+    }
+
+    public UserProfileResponse updateCurrentUserProfile(
+            UpdateProfileRequest request, AuthPrincipal principal) {
+        if (principal == null) {
+            throw unauthorized("Unauthenticated");
+        }
+        User user = userRepository.findById(principal.userId())
+                .filter(User::isActive)
+                .orElseThrow(() -> unauthorized("User not found"));
+        String cleanPhone = (request.phone() == null || request.phone().isBlank())
+                ? null
+                : request.phone().trim();
+        user.updateProfile(request.fullName().trim(), cleanPhone);
+        return UserProfileResponse.from(userRepository.save(user));
     }
 
     private AuthResponse tokensFor(User user) {

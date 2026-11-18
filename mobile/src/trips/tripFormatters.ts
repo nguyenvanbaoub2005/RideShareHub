@@ -17,6 +17,31 @@ export function formatDeparture(iso: string): string {
   });
 }
 
+/** Format full Vietnamese date from YYYY-MM-DD or ISO string (e.g. "Thứ 6, 18/07/2026"). */
+export function formatDateLong(isoOrDate: string): string {
+  const normalized = isoOrDate.length === 10 ? `${isoOrDate}T00:00:00` : isoOrDate;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return isoOrDate;
+  return d.toLocaleDateString('vi-VN', {
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+/** Format compact Vietnamese date (e.g. "Th 6, 18/07"). */
+export function formatDateShort(isoOrDate: string): string {
+  const normalized = isoOrDate.length === 10 ? `${isoOrDate}T00:00:00` : isoOrDate;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return isoOrDate;
+  return d.toLocaleDateString('vi-VN', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+  });
+}
+
 /** Format HH:mm from ISO string. */
 export function formatTimeOnly(iso: string): string {
   return new Date(iso).toLocaleTimeString('vi-VN', {
@@ -61,4 +86,12 @@ export function seatColor(seats: number): string {
   if (seats <= 2) return COLORS.danger;
   if (seats <= 5) return COLORS.warningText;
   return COLORS.tealDark;
+}
+
+/** Avoid duplicating capacity like "Limousine 9 chỗ 9 chỗ". */
+export function formatVehicleLabel(vehicleType: string, seatCapacity?: number): string {
+  const cleanType = vehicleType?.trim() || 'Xe ghép';
+  if (!seatCapacity || seatCapacity <= 0) return cleanType;
+  if (/\d+\s*chỗ/i.test(cleanType)) return cleanType;
+  return `${cleanType} ${seatCapacity} chỗ`;
 }

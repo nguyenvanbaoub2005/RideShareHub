@@ -425,6 +425,106 @@ class BookingServiceTest {
             assertThat(resp.status()).isEqualTo(BookingStatus.NO_SHOW);
             assertThat(publishedTrip.getBookedSeats()).isEqualTo(0);
         }
+
+        @Test
+        void rejects_passenger_cancellation_within_30_minutes_of_departure() {
+            Trip soonTrip = new Trip(
+                    route,
+                    company,
+                    vehicle,
+                    driver,
+                    Instant.now().plus(20, ChronoUnit.MINUTES),
+                    new BigDecimal("150000.00"));
+            setId(soonTrip, 502L);
+            soonTrip.publish();
+            soonTrip.reserveSeats(2);
+
+            Booking booking = new Booking(
+                    "BK-SOON01",
+                    soonTrip,
+                    passenger,
+                    "idem-key-soon",
+                    2,
+                    "Điểm đón A",
+                    null,
+                    null,
+                    "Điểm trả B",
+                    null,
+                    null,
+                    new BigDecimal("300000.00"),
+                    true);
+            setId(booking, 804L);
+
+            when(bookingRepository.findByIdWithDetails(804L)).thenReturn(Optional.of(booking));
+            when(tripRepository.findByIdForUpdate(502L)).thenReturn(Optional.of(soonTrip));
+
+            assertThatThrownBy(() -> service.cancelBooking(
+                    804L, "cancel-key-soon", new CancelBookingRequest("Muốn hủy sát giờ"), PASSENGER_PRINCIPAL))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                            .isEqualTo(HttpStatus.CONFLICT));
+
+            assertThat(soonTrip.getBookedSeats()).isEqualTo(2);
+            verify(bookingRepository, never()).save(any());
+        }
+
+        @Test
+        void rejects_booking_when_trip_already_departed() {
+            Trip departedTrip = new Trip(
+                    route,
+                    company,
+                    vehicle,
+                    driver,
+                    Instant.now().minus(20, ChronoUnit.MINUTES),
+                    new BigDecimal("150000.00"));
+            setId(departedTrip, 503L);
+            departedTrip.publish();
+
+            CreateBookingRequest req = new CreateBookingRequest(
+                    1,
+                    new LocationDto("Bến xe Đà Nẵng", null, null),
+                    new LocationDto("BigC Huế", null, null));
+
+            when(bookingRepository.findByPassenger_IdAndIdempotencyKey(101L, "idem-departed-01"))
+                    .thenReturn(Optional.empty());
+            when(userRepository.findById(101L)).thenReturn(Optional.of(passenger));
+            when(tripRepository.findByIdForUpdate(503L)).thenReturn(Optional.of(departedTrip));
+
+            assertThatThrownBy(() -> service.createBooking(503L, "idem-departed-01", req, PASSENGER_PRINCIPAL))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                            .isEqualTo(HttpStatus.CONFLICT));
+            verify(bookingRepository, never()).save(any());
+        }
+
+        @Test
+        void rejects_booking_within_15_minutes_cutoff() {
+            Trip nearTrip = new Trip(
+                    route,
+                    company,
+                    vehicle,
+                    driver,
+                    Instant.now().plus(10, ChronoUnit.MINUTES),
+                    new BigDecimal("150000.00"));
+            setId(nearTrip, 504L);
+            nearTrip.publish();
+
+            CreateBookingRequest req = new CreateBookingRequest(
+                    1,
+                    new LocationDto("Bến xe Đà Nẵng", null, null),
+                    new LocationDto("BigC Huế", null, null));
+
+            when(bookingRepository.findByPassenger_IdAndIdempotencyKey(101L, "idem-cutoff-01"))
+                    .thenReturn(Optional.empty());
+            when(userRepository.findById(101L)).thenReturn(Optional.of(passenger));
+            when(tripRepository.findByIdForUpdate(504L)).thenReturn(Optional.of(nearTrip));
+
+            assertThatThrownBy(() -> service.createBooking(504L, "idem-cutoff-01", req, PASSENGER_PRINCIPAL))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                            .isEqualTo(HttpStatus.CONFLICT));
+            verify(bookingRepository, never()).save(any());
+        }
     }
 
     private static void setId(Object entity, Long id) {
