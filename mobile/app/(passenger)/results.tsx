@@ -9,6 +9,7 @@ import {
   FlatList,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -330,8 +331,13 @@ export default function SearchResultsScreen() {
         }
       />
 
-      {/* Sort Pill Bar matching Figma PA-05 */}
-      <View style={styles.sortBar}>
+      {/* Sort Pill Bar matching Figma PA-05 (horizontal scroll so pills never clip) */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.sortBarScroll}
+        contentContainerStyle={styles.sortBar}
+      >
         {(
           [
             ['time', 'Giờ đi sớm'],
@@ -351,7 +357,7 @@ export default function SearchResultsScreen() {
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
 
       {state.status === 'loading' && (
         <View style={styles.center}>
@@ -383,6 +389,20 @@ export default function SearchResultsScreen() {
         <FlatList
           data={filteredResults}
           keyExtractor={t => String(t.tripId)}
+          refreshControl={
+            <RefreshControl
+              refreshing={false}
+              onRefresh={() =>
+                search({
+                  origin: params.origin,
+                  destination: params.destination,
+                  date: params.date,
+                  minSeats: initialSeats,
+                })
+              }
+              tintColor={COLORS.primary}
+            />
+          }
           ListHeaderComponent={
             <Text style={styles.resultCount}>
               {filteredResults.length === 0
@@ -396,20 +416,27 @@ export default function SearchResultsScreen() {
               <Text style={styles.emptyText}>
                 {activeFilterCount > 0
                   ? 'Thử bỏ bớt bộ lọc hiện tại hoặc mở rộng khung giờ.'
-                  : 'Thử thay đổi điểm đi/đến, ngày khởi hành hoặc số lượng khách.'}
+                  : 'Thử thay đổi điểm đi/đến, ngày khởi hành hoặc xem tất cả chuyến đang mở bán.'}
               </Text>
               <Pressable
                 style={styles.retryBtn}
                 onPress={() => {
                   if (activeFilterCount > 0) {
                     setFilters(defaultFilters);
+                  } else if (params.origin || params.destination || params.date) {
+                    setFilters({ ...defaultFilters, minSeats: 1 });
+                    search({ minSeats: 1 });
                   } else {
                     router.back();
                   }
                 }}
               >
                 <Text style={styles.retryText}>
-                  {activeFilterCount > 0 ? 'Xóa bộ lọc' : 'Chọn lại điều kiện'}
+                  {activeFilterCount > 0
+                    ? 'Xóa bộ lọc'
+                    : params.origin || params.destination || params.date
+                      ? 'Xem tất cả chuyến đang mở bán'
+                      : 'Chọn lại điều kiện'}
                 </Text>
               </Pressable>
             </View>
@@ -714,6 +741,9 @@ const styles = StyleSheet.create({
   },
   filterCountText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
 
+  sortBarScroll: {
+    flexGrow: 0,
+  },
   sortBar: {
     flexDirection: 'row',
     gap: 8,

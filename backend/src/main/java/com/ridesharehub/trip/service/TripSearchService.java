@@ -2,12 +2,14 @@ package com.ridesharehub.trip.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
@@ -82,6 +84,20 @@ public class TripSearchService {
                 origin, destination, from, to,
                 PageRequest.of(0, PAGE_SIZE));
 
+        // Fallback: Vietnamese accent-insensitive matching (e.g., "da nang" -> "Đà Nẵng", "hue" -> "Huế")
+        if (trips.isEmpty() && (origin != null || destination != null)) {
+            String normOrigin = origin != null ? normalizeVietnamese(origin) : null;
+            String normDest   = destination != null ? normalizeVietnamese(destination) : null;
+            List<Trip> candidates = tripRepository.searchPublished(
+                    null, null, from, to, PageRequest.of(0, PAGE_SIZE));
+            trips = candidates.stream()
+                    .filter(t -> normOrigin == null
+                            || normalizeVietnamese(t.getRoute().getOrigin()).contains(normOrigin))
+                    .filter(t -> normDest == null
+                            || normalizeVietnamese(t.getRoute().getDestination()).contains(normDest))
+                    .toList();
+        }
+
         return trips.stream()
                 .map(t -> toResult(t, minSeats, minBookableDeparture))
                 .filter(r -> r != null)
@@ -96,6 +112,11 @@ public class TripSearchService {
      */
     private TripSearchResult toResult(Trip trip, int minSeats, Instant minBookableDeparture) {
         if (trip.getDepartureTime() == null || trip.getDepartureTime().isBefore(minBookableDeparture)) {
+            return null;
+        }
+        if (trip.getCompany() != null
+                && trip.getCompany().getStatus() != null
+                && !trip.getCompany().isApproved()) {
             return null;
         }
 
@@ -153,5 +174,13 @@ public class TripSearchService {
 
     private static String blankToNull(String value) {
         return (value == null || value.isBlank()) ? null : value.strip();
+    }
+
+    private static String normalizeVietnamese(String input) {
+        if (input == null) return "";
+        String decomposed = Normalizer.normalize(input.trim().toLowerCase(Locale.ROOT), Normalizer.Form.NFD);
+        return decomposed
+                .replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+                .replace('đ', 'd');
     }
 }

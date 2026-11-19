@@ -59,8 +59,25 @@ class TripSearchServiceTest {
     void search_withOriginAndDestination_passesFiltersToRepository() {
         when(tripRepository.searchPublished(eq("Hà Nội"), eq("Đà Nẵng"), eq(EXPECTED_CUTOFF), isNull(), any(Pageable.class)))
                 .thenReturn(List.of());
+        when(tripRepository.searchPublished(isNull(), isNull(), eq(EXPECTED_CUTOFF), isNull(), any(Pageable.class)))
+                .thenReturn(List.of());
 
         service.search(new TripSearchRequest("Hà Nội", "Đà Nẵng", null, null));
+    }
+
+    @Test
+    void search_matchesVietnameseUnaccentedOriginAndDestination() {
+        Trip trip = buildPublishedTrip(10); // origin="Hà Nội", destination="Đà Nẵng"
+        when(tripRepository.searchPublished(eq("ha noi"), eq("da nang"), eq(EXPECTED_CUTOFF), isNull(), any(Pageable.class)))
+                .thenReturn(List.of());
+        when(tripRepository.searchPublished(isNull(), isNull(), eq(EXPECTED_CUTOFF), isNull(), any(Pageable.class)))
+                .thenReturn(List.of(trip));
+
+        List<TripSearchResult> results = service.search(new TripSearchRequest("ha noi", "da nang", null, 1));
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).origin()).isEqualTo("Hà Nội");
+        assertThat(results.get(0).destination()).isEqualTo("Đà Nẵng");
     }
 
     @Test

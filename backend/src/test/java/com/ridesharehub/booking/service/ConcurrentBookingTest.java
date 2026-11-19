@@ -271,4 +271,17 @@ class ConcurrentBookingTest {
         assertThat(reloadedTrip.getBookedSeats()).isEqualTo(6);
         assertThat(reloadedTrip.getStatus()).isEqualTo(TripStatus.PUBLISHED);
     }
+
+    @Test
+    void searchPublished_executes_cleanly_with_enum_params_and_returns_approved_trip() {
+        List<Trip> found = tripRepository.searchPublished(
+                "Đà Nẵng",
+                "Huế",
+                Instant.now(),
+                null,
+                org.springframework.data.domain.PageRequest.of(0, 10));
+
+        assertThat(found).hasSize(1);
+        assertThat(found.get(0).getId()).isEqualTo(twoSeatRemainingTrip.getId());
+    }
 }
