@@ -191,6 +191,41 @@ public class Booking {
         this.updatedAt = Instant.now();
     }
 
+    /**
+     * Marks a CONFIRMED or PENDING booking as PICKED_UP when the driver completes the pickup stop.
+     */
+    public void markPickedUp() {
+        if (this.status == BookingStatus.PICKED_UP || this.status == BookingStatus.COMPLETED) {
+            return; // Idempotent
+        }
+        if (this.status != BookingStatus.CONFIRMED && this.status != BookingStatus.PENDING) {
+            throw new IllegalStateException(
+                    "Booking cannot transition to PICKED_UP from status: " + this.status);
+        }
+        this.status = BookingStatus.PICKED_UP;
+        if (this.confirmedAt == null) {
+            this.confirmedAt = Instant.now();
+        }
+        this.pickedUpAt = Instant.now();
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * Marks a PICKED_UP booking as COMPLETED when the driver completes the dropoff stop.
+     */
+    public void markCompleted() {
+        if (this.status == BookingStatus.COMPLETED) {
+            return; // Idempotent
+        }
+        if (this.status != BookingStatus.PICKED_UP) {
+            throw new IllegalStateException(
+                    "Booking cannot transition to COMPLETED before PICKED_UP (current: " + this.status + ")");
+        }
+        this.status = BookingStatus.COMPLETED;
+        this.completedAt = Instant.now();
+        this.updatedAt = Instant.now();
+    }
+
     // ------------------------------------------------------------------ accessors
 
     public Long getId()                   { return id; }

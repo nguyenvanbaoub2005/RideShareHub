@@ -18,6 +18,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
+import com.ridesharehub.trip.enums.DriverAssignmentStatus;
 import com.ridesharehub.trip.enums.TripStatus;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -62,6 +63,34 @@ public class Trip {
 
     @Column(name = "booked_seats", nullable = false)
     private int bookedSeats = 0;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "assignment_status", nullable = false, length = 20)
+    private DriverAssignmentStatus assignmentStatus = DriverAssignmentStatus.ASSIGNED;
+
+    @Column(name = "accepted_at")
+    private Instant acceptedAt;
+
+    @Column(name = "started_at")
+    private Instant startedAt;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
+    @Column(name = "last_lat", precision = 10, scale = 7)
+    private BigDecimal lastLat;
+
+    @Column(name = "last_lng", precision = 10, scale = 7)
+    private BigDecimal lastLng;
+
+    @Column(name = "last_heading", precision = 6, scale = 2)
+    private BigDecimal lastHeading;
+
+    @Column(name = "last_speed_kmh", precision = 6, scale = 2)
+    private BigDecimal lastSpeedKmh;
+
+    @Column(name = "last_location_at")
+    private Instant lastLocationAt;
 
     @Version
     @Column(nullable = false)
@@ -128,9 +157,97 @@ public class Trip {
         if (fare.compareTo(BigDecimal.ZERO) < 0) throw new IllegalArgumentException("fare must be >= 0");
         this.vehicle = vehicle;
         this.driver = driver;
+        this.assignmentStatus = DriverAssignmentStatus.ASSIGNED;
+        this.acceptedAt = null;
         this.departureTime = departureTime;
         this.fare = fare;
         this.note = note;
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * SP3-P2-01b: Driver accepts the assigned trip. Idempotent if already ACCEPTED.
+     */
+    public void acceptAssignment() {
+        if (this.status == TripStatus.CANCELLED || this.status == TripStatus.COMPLETED) {
+            throw new IllegalStateException("Cannot accept assignment on a terminal trip: " + this.status);
+        }
+        if (this.assignmentStatus == DriverAssignmentStatus.ACCEPTED) {
+            return; // Idempotent
+        }
+        if (this.assignmentStatus == DriverAssignmentStatus.REJECTED) {
+            throw new IllegalStateException("Assignment was already rejected");
+        }
+        this.assignmentStatus = DriverAssignmentStatus.ACCEPTED;
+        this.acceptedAt = Instant.now();
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * SP3-P2-01b: Driver rejects the assigned trip before accepting/starting it.
+     */
+    public void rejectAssignment() {
+        if (this.status == TripStatus.IN_PROGRESS
+                || this.status == TripStatus.COMPLETED
+                || this.status == TripStatus.CANCELLED) {
+            throw new IllegalStateException("Cannot reject assignment when trip is in status: " + this.status);
+        }
+        if (this.assignmentStatus == DriverAssignmentStatus.REJECTED) {
+            return; // Idempotent
+        }
+        if (this.assignmentStatus == DriverAssignmentStatus.ACCEPTED) {
+            throw new IllegalStateException("Cannot reject a trip that has already been accepted");
+        }
+        this.assignmentStatus = DriverAssignmentStatus.REJECTED;
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * SP3-P2-01: Driver starts the trip (PUBLISHED / FULL -> IN_PROGRESS).
+     */
+    public void startTrip() {
+        if (this.status == TripStatus.IN_PROGRESS) {
+            return; // Idempotent
+        }
+        if (this.status != TripStatus.PUBLISHED && this.status != TripStatus.FULL) {
+            throw new IllegalStateException("Trip can only be started from PUBLISHED or FULL status (current: " + this.status + ")");
+        }
+        if (this.assignmentStatus != DriverAssignmentStatus.ACCEPTED) {
+            throw new IllegalStateException("Driver must ACCEPT the trip assignment before starting the trip");
+        }
+        this.status = TripStatus.IN_PROGRESS;
+        this.startedAt = Instant.now();
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * SP3-P2-01: Driver completes the trip (IN_PROGRESS -> COMPLETED) after all required stops resolve.
+     */
+    public void completeTrip() {
+        if (this.status == TripStatus.COMPLETED) {
+            return; // Idempotent
+        }
+        if (this.status != TripStatus.IN_PROGRESS) {
+            throw new IllegalStateException("Only IN_PROGRESS trips can be completed (current: " + this.status + ")");
+        }
+        this.status = TripStatus.COMPLETED;
+        this.completedAt = Instant.now();
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * SP3-P2-02: Records latest driver GPS location sample on the Trip.
+     */
+    public void updateDriverLocation(
+            BigDecimal latitude,
+            BigDecimal longitude,
+            BigDecimal heading,
+            BigDecimal speedKmh) {
+        this.lastLat = latitude;
+        this.lastLng = longitude;
+        this.lastHeading = heading;
+        this.lastSpeedKmh = speedKmh;
+        this.lastLocationAt = Instant.now();
         this.updatedAt = Instant.now();
     }
 
@@ -187,6 +304,15 @@ public class Trip {
     public BigDecimal getFare()          { return fare; }
     public String getNote()              { return note; }
     public TripStatus getStatus()        { return status; }
+    public DriverAssignmentStatus getAssignmentStatus() { return assignmentStatus; }
+    public Instant getAcceptedAt()       { return acceptedAt; }
+    public Instant getStartedAt()        { return startedAt; }
+    public Instant getCompletedAt()      { return completedAt; }
+    public BigDecimal getLastLat()       { return lastLat; }
+    public BigDecimal getLastLng()       { return lastLng; }
+    public BigDecimal getLastHeading()   { return lastHeading; }
+    public BigDecimal getLastSpeedKmh()  { return lastSpeedKmh; }
+    public Instant getLastLocationAt()   { return lastLocationAt; }
     public int getBookedSeats()          { return bookedSeats; }
     public int getAvailableSeats()       { return vehicle.getSeatCapacity() - bookedSeats; }
     public long getVersion()             { return version; }

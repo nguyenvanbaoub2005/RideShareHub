@@ -3,7 +3,7 @@
  * Route: /(driver)/
  */
 
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -127,6 +127,12 @@ export default function DriverHomeScreen() {
     loadTrips();
   }, [loadTrips]);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadTrips();
+    }, [loadTrips]),
+  );
+
   const upcomingTrips = useMemo(
     () =>
       trips.filter(
@@ -192,6 +198,25 @@ export default function DriverHomeScreen() {
   function renderTripCard({ item }: { item: DriverTripSummary }) {
     const isHighlight = item.status === 'IN_PROGRESS' || item.status === 'PUBLISHED' || item.status === 'FULL';
     const booked = item.bookedSeats ?? 0;
+    const assign = item.assignmentStatus ?? 'ASSIGNED';
+    const assignLabel =
+      assign === 'ACCEPTED'
+        ? '✓ Đã nhận chuyến'
+        : assign === 'REJECTED'
+          ? '✕ Đã từ chối'
+          : '● Chờ nhận chuyến';
+    const assignBg =
+      assign === 'ACCEPTED'
+        ? '#DCFCE7'
+        : assign === 'REJECTED'
+          ? '#FEE2E2'
+          : '#FEF3C7';
+    const assignColor =
+      assign === 'ACCEPTED'
+        ? '#166534'
+        : assign === 'REJECTED'
+          ? '#991B1B'
+          : '#92400E';
     return (
       <Pressable
         style={[styles.card, isHighlight && styles.cardHighlight]}
@@ -203,7 +228,12 @@ export default function DriverHomeScreen() {
           <Text style={styles.cardMeta}>
             {formatDay(item.departureTime)} · #{item.id}
           </Text>
-          <StatusBadge status={item.status} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ backgroundColor: assignBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: assignColor }}>{assignLabel}</Text>
+            </View>
+            <StatusBadge status={item.status} />
+          </View>
         </View>
 
         <View style={styles.timeRow}>

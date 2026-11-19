@@ -619,6 +619,107 @@ export default function PassengerHomeScreen() {
           </Pressable>
         </View>
 
+        {/* SP3-P2-04: Active Trip Live Tracking & Notification Banner (PA-13 / PA-14) */}
+        {myBookings.some(b => b.status === 'CONFIRMED' || b.status === 'PICKED_UP') ? (
+          <View style={{ paddingHorizontal: 18, marginTop: 14 }}>
+            {myBookings
+              .filter(b => b.status === 'CONFIRMED' || b.status === 'PICKED_UP')
+              .slice(0, 1)
+              .map(activeBk => (
+                <Pressable
+                  key={activeBk.id}
+                  style={{
+                    backgroundColor: activeBk.status === 'PICKED_UP' ? '#064E3B' : '#1E1B4B',
+                    borderRadius: 18,
+                    padding: 15,
+                    borderWidth: 1,
+                    borderColor: activeBk.status === 'PICKED_UP' ? '#10B981' : '#6366F1',
+                  }}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/(passenger)/tracking/[tripId]',
+                      params: { tripId: String(activeBk.tripId) },
+                    } as never)
+                  }
+                  accessibilityRole="button"
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 6,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        backgroundColor: 'rgba(255,255,255,0.14)',
+                        paddingHorizontal: 9,
+                        paddingVertical: 3,
+                        borderRadius: 999,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: 4,
+                          backgroundColor: '#34D399',
+                        }}
+                      />
+                      <Text style={{ color: '#A7F3D0', fontSize: 10, fontWeight: '800' }}>
+                        {activeBk.status === 'PICKED_UP'
+                          ? 'ĐANG TRÊN XE · THEO DÕI GPS TRỰC TIẾP'
+                          : 'VÉ ĐÃ XÁC NHẬN · THEO DÕI XE & THÔNG BÁO'}
+                      </Text>
+                    </View>
+                    <Text style={{ color: '#E0E7FF', fontSize: 11, fontWeight: '700' }}>
+                      {activeBk.bookingCode}
+                    </Text>
+                  </View>
+
+                  <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '800' }}>
+                    {activeBk.origin} → {activeBk.destination}
+                  </Text>
+                  <Text
+                    style={{
+                      color: '#CBD5E1',
+                      fontSize: 12,
+                      marginTop: 2,
+                      marginBottom: 10,
+                    }}
+                    numberOfLines={1}
+                  >
+                    Xe {activeBk.vehiclePlate} · Tài xế {activeBk.driverName} · Đón tại{' '}
+                    {activeBk.pickup.label}
+                  </Text>
+
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: 'rgba(255,255,255,0.12)',
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 11,
+                    }}
+                  >
+                    <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '800' }}>
+                      📡 Xem bản đồ vị trí xe, ETA & thông báo chuyến
+                    </Text>
+                    <Text style={{ color: '#34D399', fontSize: 12, fontWeight: '800' }}>
+                      Mở ngay →
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+          </View>
+        ) : null}
+
         {tripsError ? (
           <View style={styles.serverErrorCard}>
             <Text style={styles.serverErrorTitle}>Chưa tải được danh sách chuyến</Text>
