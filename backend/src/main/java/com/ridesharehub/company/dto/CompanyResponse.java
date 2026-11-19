@@ -13,12 +13,30 @@ public record CompanyResponse(
         String contactPhone,
         String contactEmail,
         String representativeName,
+        String businessInformation,
         CompanyStatus status,
         String rejectReason,
         BigDecimal avgRating,
         int ratingCount,
         long version,
         Instant createdAt) {
+
+    public CompanyResponse(
+            Long id,
+            String name,
+            String address,
+            String contactPhone,
+            String contactEmail,
+            String representativeName,
+            CompanyStatus status,
+            String rejectReason,
+            BigDecimal avgRating,
+            int ratingCount,
+            long version,
+            Instant createdAt) {
+        this(id, name, address, contactPhone, contactEmail, representativeName,
+                null, status, rejectReason, avgRating, ratingCount, version, createdAt);
+    }
 
     public static CompanyResponse from(TransportCompany c) {
         return new CompanyResponse(
@@ -28,6 +46,7 @@ public record CompanyResponse(
                 c.getContactPhone(),
                 c.getContactEmail(),
                 c.getRepresentativeName(),
+                c.getBusinessInformation(),
                 c.getStatus(),
                 c.getRejectReason(),
                 c.getAvgRating(),

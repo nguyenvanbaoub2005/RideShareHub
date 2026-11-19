@@ -183,6 +183,44 @@ class TripServiceTest {
                             .isEqualTo(HttpStatus.CONFLICT.value()));
             verify(tripRepository, never()).save(any());
         }
+
+        @Test
+        void rejects_maintenance_or_inactive_vehicle() {
+            vehicle.updateStatus(com.ridesharehub.company.enums.VehicleStatus.MAINTENANCE);
+            Instant departure = Instant.now().plus(1, ChronoUnit.DAYS);
+            TripRequest req = new TripRequest(300L, 100L, 200L, departure,
+                    BigDecimal.valueOf(150_000), null);
+
+            when(companyRepository.findById(1L)).thenReturn(Optional.of(approvedCompany));
+            when(routeRepository.findById(300L)).thenReturn(Optional.of(route));
+            when(vehicleRepository.findById(100L)).thenReturn(Optional.of(vehicle));
+            when(driverRepository.findById(200L)).thenReturn(Optional.of(driver));
+
+            assertThatThrownBy(() -> service.createTrip(1L, req, TC_PRINCIPAL))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                            .isEqualTo(HttpStatus.CONFLICT));
+            verify(tripRepository, never()).save(any());
+        }
+
+        @Test
+        void rejects_inactive_driver() {
+            driver.updateStatus(com.ridesharehub.driver.enums.DriverStatus.INACTIVE);
+            Instant departure = Instant.now().plus(1, ChronoUnit.DAYS);
+            TripRequest req = new TripRequest(300L, 100L, 200L, departure,
+                    BigDecimal.valueOf(150_000), null);
+
+            when(companyRepository.findById(1L)).thenReturn(Optional.of(approvedCompany));
+            when(routeRepository.findById(300L)).thenReturn(Optional.of(route));
+            when(vehicleRepository.findById(100L)).thenReturn(Optional.of(vehicle));
+            when(driverRepository.findById(200L)).thenReturn(Optional.of(driver));
+
+            assertThatThrownBy(() -> service.createTrip(1L, req, TC_PRINCIPAL))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                            .isEqualTo(HttpStatus.CONFLICT));
+            verify(tripRepository, never()).save(any());
+        }
     }
 
     // ================================================================== publishTrip

@@ -193,7 +193,11 @@ export default function TripDetailScreen() {
     Math.round((bookedSeatsCount / Math.max(totalSeats, 1)) * 100),
   );
   const arrivalTime = formatArrivalTime(trip.departureTime, trip.estimatedMinutes);
-  const vehicleDisplay = formatVehicleLabel(trip.vehicleType, totalSeats);
+  const brandModel = [trip.vehicleBrand, trip.vehicleModel].filter(Boolean).join(' ');
+  const vehicleDisplay = [brandModel || null, formatVehicleLabel(trip.vehicleType, totalSeats)]
+    .filter(Boolean)
+    .join(' · ');
+  const hasCompanyRating = (trip.companyRatingCount ?? 0) > 0 && (trip.companyRating ?? 0) > 0;
 
   const minutesUntilDeparture = Math.floor(
     (new Date(trip.departureTime).getTime() - Date.now()) / 60_000,
@@ -295,7 +299,7 @@ export default function TripDetailScreen() {
         await updateMyProfile(session.accessToken, {
           fullName: cleanName,
           phone: cleanPhone || null,
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       const booking = await createBooking(
@@ -324,7 +328,7 @@ export default function TripDetailScreen() {
           setIdempotencyKey(generateIdempotencyKey('book'));
           setErrorMsg(
             err.message ||
-              'Chuyến xe không còn khả dụng hoặc không đủ số ghế bạn chọn.',
+            'Chuyến xe không còn khả dụng hoặc không đủ số ghế bạn chọn.',
           );
         } else {
           setErrorMsg(err.message);
@@ -803,6 +807,9 @@ export default function TripDetailScreen() {
                 {companyName}
               </Text>
               <Text style={styles.operatorMeta} numberOfLines={1}>
+                {hasCompanyRating
+                  ? `★ ${Number(trip.companyRating).toFixed(1)} (${trip.companyRatingCount} đánh giá) · `
+                  : ''}
                 Tài xế {trip.driverName} · {trip.routeName}
               </Text>
             </View>

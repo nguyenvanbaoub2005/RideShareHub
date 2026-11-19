@@ -59,8 +59,25 @@ class TripSearchServiceTest {
     void search_withOriginAndDestination_passesFiltersToRepository() {
         when(tripRepository.searchPublished(eq("Hà Nội"), eq("Đà Nẵng"), eq(EXPECTED_CUTOFF), isNull(), any(Pageable.class)))
                 .thenReturn(List.of());
+        when(tripRepository.searchPublished(isNull(), isNull(), eq(EXPECTED_CUTOFF), isNull(), any(Pageable.class)))
+                .thenReturn(List.of());
 
         service.search(new TripSearchRequest("Hà Nội", "Đà Nẵng", null, null));
+    }
+
+    @Test
+    void search_matchesVietnameseUnaccentedOriginAndDestination() {
+        Trip trip = buildPublishedTrip(10); // origin="Hà Nội", destination="Đà Nẵng"
+        when(tripRepository.searchPublished(eq("ha noi"), eq("da nang"), eq(EXPECTED_CUTOFF), isNull(), any(Pageable.class)))
+                .thenReturn(List.of());
+        when(tripRepository.searchPublished(isNull(), isNull(), eq(EXPECTED_CUTOFF), isNull(), any(Pageable.class)))
+                .thenReturn(List.of(trip));
+
+        List<TripSearchResult> results = service.search(new TripSearchRequest("ha noi", "da nang", null, 1));
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).origin()).isEqualTo("Hà Nội");
+        assertThat(results.get(0).destination()).isEqualTo("Đà Nẵng");
     }
 
     @Test
@@ -133,34 +150,31 @@ class TripSearchServiceTest {
         assertThat(results).hasSize(1);
     }
 
-    // ------------------------------------------------------------------ SP2-P1-02 fare estimation
+    // ------------------------------------------------------------------ SP2-P1-02 fare estimation (MVP V1 fixed fare, no surge pricing)
 
     @Test
-    void estimateFare_noSurcharge_whenMajorityOfSeatsAvailable() {
-        // 10 capacity, 0 booked → 100% remaining → no surcharge
+    void estimateFare_returnsBaseFare_whenMajorityOfSeatsAvailable() {
         BigDecimal estimated = service.estimateFare(new BigDecimal("100.00"), 10, 0);
         assertThat(estimated).isEqualByComparingTo("100.00");
     }
 
     @Test
-    void estimateFare_mediumSurcharge_whenBetween20And50PercentRemaining() {
-        // 10 capacity, 6 booked → 40% remaining → +10%
+    void estimateFare_returnsFixedBaseFare_whenBetween20And50PercentRemaining() {
+        // MVP V1 excludes surge pricing per project spec section 5.13 & 12.2
         BigDecimal estimated = service.estimateFare(new BigDecimal("100.00"), 10, 6);
-        assertThat(estimated).isEqualByComparingTo("110.00");
+        assertThat(estimated).isEqualByComparingTo("100.00");
     }
 
     @Test
-    void estimateFare_highSurcharge_whenLessThan20PercentRemaining() {
-        // 10 capacity, 9 booked → 10% remaining → +20%
+    void estimateFare_returnsFixedBaseFare_whenLessThan20PercentRemaining() {
         BigDecimal estimated = service.estimateFare(new BigDecimal("100.00"), 10, 9);
-        assertThat(estimated).isEqualByComparingTo("120.00");
+        assertThat(estimated).isEqualByComparingTo("100.00");
     }
 
     @Test
     void estimateFare_roundsToTwoDecimalPlaces() {
-        BigDecimal estimated = service.estimateFare(new BigDecimal("99.99"), 10, 6);
-        // 99.99 * 1.10 = 109.989 → rounds to 109.99
-        assertThat(estimated).isEqualByComparingTo("109.99");
+        BigDecimal estimated = service.estimateFare(new BigDecimal("99.989"), 10, 6);
+        assertThat(estimated).isEqualByComparingTo("99.99");
     }
 
     @Test

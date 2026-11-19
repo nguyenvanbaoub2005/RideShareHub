@@ -1,5 +1,6 @@
 package com.ridesharehub.trip.repository;
 
+import com.ridesharehub.company.enums.CompanyStatus;
 import com.ridesharehub.trip.entity.Trip;
 import com.ridesharehub.trip.enums.TripStatus;
 import jakarta.persistence.LockModeType;
@@ -102,6 +103,7 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
               JOIN FETCH t.driver d
               JOIN FETCH t.company c
             WHERE t.status = :status
+              AND c.status = :approvedStatus
               AND LOWER(r.origin) LIKE LOWER(CONCAT('%', :origin, '%'))
               AND LOWER(r.destination) LIKE LOWER(CONCAT('%', :destination, '%'))
               AND t.departureTime >= :from
@@ -109,11 +111,12 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
             ORDER BY t.departureTime ASC
             """)
     List<Trip> searchByStatus(
-            @Param("status")      TripStatus status,
-            @Param("origin")      String origin,
-            @Param("destination") String destination,
-            @Param("from")        Instant from,
-            @Param("to")          Instant to,
+            @Param("status")         TripStatus status,
+            @Param("approvedStatus") CompanyStatus approvedStatus,
+            @Param("origin")         String origin,
+            @Param("destination")    String destination,
+            @Param("from")           Instant from,
+            @Param("to")             Instant to,
             Pageable pageable);
 
     /**
@@ -136,6 +139,7 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
             Pageable pageable) {
         return searchByStatus(
                 TripStatus.PUBLISHED,
+                CompanyStatus.APPROVED,
                 origin != null ? origin : "",
                 destination != null ? destination : "",
                 from != null ? from : Instant.EPOCH,

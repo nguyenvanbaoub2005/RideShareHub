@@ -15,7 +15,13 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { getDriverTrips, type DriverTripSummary } from '../../src/api/client';
+import {
+  getDriverTrips,
+  getMyDriverProfile,
+  updateMyDriverStatus,
+  type DriverProfile,
+  type DriverTripSummary,
+} from '../../src/api/client';
 import { useAuth } from '../../src/session/AuthContext';
 import {
   BusGlyph,
@@ -78,6 +84,8 @@ export default function DriverHomeScreen() {
 
   const [activeTab, setActiveTab] = useState<'home' | 'trips'>('home');
   const [trips, setTrips] = useState<DriverTripSummary[]>([]);
+  const [driverProfile, setDriverProfile] = useState<DriverProfile | null>(null);
+  const [togglingStatus, setTogglingStatus] = useState(false);
   const [filter, setFilter] = useState<FilterTab>('ALL');
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -87,14 +95,33 @@ export default function DriverHomeScreen() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const list = await getDriverTrips(session.accessToken);
+      const [list, profile] = await Promise.all([
+        getDriverTrips(session.accessToken),
+        getMyDriverProfile(session.accessToken).catch(() => null),
+      ]);
       setTrips(list);
+      if (profile) setDriverProfile(profile);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Không thể tải danh sách chuyến');
     } finally {
       setLoading(false);
     }
   }, [session?.accessToken]);
+
+  async function handleToggleAvailability() {
+    if (!session?.accessToken || !driverProfile || togglingStatus) return;
+    if (driverProfile.status === 'ON_TRIP') return;
+    const nextStatus = driverProfile.status === 'AVAILABLE' ? 'INACTIVE' : 'AVAILABLE';
+    setTogglingStatus(true);
+    try {
+      const updated = await updateMyDriverStatus(session.accessToken, nextStatus);
+      setDriverProfile(updated);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Không thể đổi trạng thái sẵn sàng');
+    } finally {
+      setTogglingStatus(false);
+    }
+  }
 
   useEffect(() => {
     loadTrips();
@@ -221,9 +248,11 @@ export default function DriverHomeScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.greeting}>{greetingByHour()}</Text>
-              <Text style={styles.heroTitle}>Tài xế RideShare</Text>
+              <Text style={styles.heroTitle}>
+                {driverProfile?.fullName || 'Tài xế RideShare'}
+              </Text>
               <Text style={styles.heroSubMeta}>
-                ★ Sẵn sàng · {trips.length} chuyến được giao
+                {driverProfile?.status === 'INACTIVE' ? '○ Tạm nghỉ' : '★ Sẵn sàng'} · {trips.length} chuyến được giao
               </Text>
             </View>
             <Pressable
@@ -251,18 +280,35 @@ export default function DriverHomeScreen() {
         </View>
 
         <View style={styles.homeBody}>
-          {/* Floating availability summary card matching Figma DR-02 */}
-          <View style={styles.statusCard}>
-            <View style={styles.statusIconCircle}>
+          {/* Floating availability summary card matching Figma DR-02 + availability toggle (Doc 3.3) */}
+          <Pressable
+            style={styles.statusCard}
+            onPress={handleToggleAvailability}
+            disabled={!driverProfile || togglingStatus || driverProfile.status === 'ON_TRIP'}
+            accessibilityRole="button"
+            accessibilityLabel="Đổi trạng thái sẵn sàng nhận chuyến"
+          >
+            <View
+              style={[
+                styles.statusIconCircle,
+                driverProfile?.status === 'INACTIVE' && { backgroundColor: COLORS.slate400 },
+              ]}
+            >
               <CheckGlyph size={18} color="#ffffff" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.statusTitle}>Đang nhận lịch phân công</Text>
+              <Text style={styles.statusTitle}>
+                {driverProfile?.status === 'INACTIVE'
+                  ? 'Đang tạm nghỉ nhận chuyến mới'
+                  : 'Đang sẵn sàng nhận lịch phân công'}
+              </Text>
               <Text style={styles.statusSub}>
-                Chuyến mới từ nhà xe sẽ tự động hiển thị tại đây
+                {driverProfile
+                  ? `Chạm để chuyển sang ${driverProfile.status === 'INACTIVE' ? 'Sẵn sàng' : 'Tạm nghỉ'}`
+                  : 'Chuyến mới từ nhà xe sẽ tự động hiển thị tại đây'}
               </Text>
             </View>
-          </View>
+          </Pressable>
 
           {/* Featured Next Trip Indigo Hero Card */}
           {nextTrip ? (

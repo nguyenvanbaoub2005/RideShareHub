@@ -62,6 +62,28 @@ const CARD_GRADIENTS: readonly [string, string][] = [
   ['#3b82f6', '#4338ca'],
 ];
 
+const POPULAR_CITIES: readonly string[] = [
+  'Đà Nẵng',
+  'Huế',
+  'Hội An',
+  'Quảng Nam',
+  'Tam Kỳ',
+  'Quảng Ngãi',
+  'Quy Nhơn',
+  'Nha Trang',
+  'Hà Nội',
+  'TP. Hồ Chí Minh',
+];
+
+function normalizeVi(str: string): string {
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .trim();
+}
+
 function localIsoDate(offsetDays = 0): string {
   const d = new Date(Date.now() + offsetDays * 86_400_000);
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -84,6 +106,7 @@ export default function PassengerHomeScreen() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [dbTrips, setDbTrips] = useState<TripSearchResult[]>([]);
+  const [tripsError, setTripsError] = useState<string | null>(null);
   const [myBookings, setMyBookings] = useState<BookingRecord[]>([]);
   const [loadingTrips, setLoadingTrips] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -96,6 +119,7 @@ export default function PassengerHomeScreen() {
       } else {
         setLoadingTrips(true);
       }
+      setTripsError(null);
       try {
         const [profileRes, tripsRes, bookingsRes] = await Promise.allSettled([
           getMyProfile(session.accessToken),
@@ -107,6 +131,13 @@ export default function PassengerHomeScreen() {
         }
         if (tripsRes.status === 'fulfilled') {
           setDbTrips(tripsRes.value);
+        } else {
+          const err = tripsRes.reason;
+          setTripsError(
+            err instanceof Error
+              ? err.message
+              : 'Không thể tải danh sách chuyến từ máy chủ.',
+          );
         }
         if (bookingsRes.status === 'fulfilled') {
           setMyBookings(bookingsRes.value);
@@ -176,14 +207,70 @@ export default function PassengerHomeScreen() {
   }, []);
 
   const matchingTrips = useMemo(() => {
-    const o = origin.trim().toLowerCase();
-    const d = destination.trim().toLowerCase();
+    const o = normalizeVi(origin);
+    const d = normalizeVi(destination);
     return dbTrips.filter(t => {
-      if (o && !t.origin.toLowerCase().includes(o)) return false;
-      if (d && !t.destination.toLowerCase().includes(d)) return false;
+      if (o && !normalizeVi(t.origin).includes(o)) return false;
+      if (d && !normalizeVi(t.destination).includes(d)) return false;
+      if (date.trim()) {
+        const dt = new Date(t.departureTime);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const tripLocalIso = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+        if (tripLocalIso !== date.trim()) return false;
+      }
+      if (t.availableSeats < pax) return false;
       return true;
     });
-  }, [dbTrips, origin, destination]);
+  }, [dbTrips, origin, destination, date, pax]);
+
+  const pairedCityStats = useMemo(() => {
+    if (!cityPickerMode) return [];
+    const map = new Map<string, { city: string; tripCount: number; minFare: number }>();
+    const otherValue = cityPickerMode === 'origin' ? destination : origin;
+    const otherNorm = normalizeVi(otherValue);
+    if (!otherNorm) return [];
+
+    for (const t of dbTrips) {
+      const otherField = cityPickerMode === 'origin' ? t.destination : t.origin;
+      const targetField = cityPickerMode === 'origin' ? t.origin : t.destination;
+      if (!normalizeVi(otherField).includes(otherNorm)) continue;
+      const existing = map.get(targetField);
+      if (!existing) {
+        map.set(targetField, { city: targetField, tripCount: 1, minFare: t.estimatedFare });
+      } else {
+        existing.tripCount += 1;
+        existing.minFare = Math.min(existing.minFare, t.estimatedFare);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.tripCount - a.tripCount);
+  }, [dbTrips, cityPickerMode, origin, destination]);
+
+  const dbCityCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of dbTrips) {
+      const city = cityPickerMode === 'destination' ? t.destination : t.origin;
+      if (!city) continue;
+      map.set(city, (map.get(city) ?? 0) + 1);
+    }
+    return map;
+  }, [dbTrips, cityPickerMode]);
+
+  const allRegionPool = useMemo(() => {
+    const ordered: string[] = [];
+    const seen = new Set<string>();
+    const addCity = (c: string) => {
+      const key = normalizeVi(c);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      ordered.push(c);
+    };
+    const primary = cityPickerMode === 'destination' ? dbDestinations : dbOrigins;
+    const secondary = cityPickerMode === 'destination' ? dbOrigins : dbDestinations;
+    primary.forEach(addCity);
+    secondary.forEach(addCity);
+    POPULAR_CITIES.forEach(addCity);
+    return ordered;
+  }, [cityPickerMode, dbOrigins, dbDestinations]);
 
   const maxAvailableSeats = useMemo(() => {
     const source = matchingTrips.length > 0 ? matchingTrips : dbTrips;
@@ -262,12 +349,21 @@ export default function PassengerHomeScreen() {
   const formattedDateHeadline = date
     ? date === localIsoDate(0)
       ? `Hôm nay, ${formatDateShort(date)}`
-      : formatDateShort(date)
+      : date === localIsoDate(1)
+        ? `Ngày mai, ${formatDateShort(date)}`
+        : formatDateShort(date)
     : 'Tất cả ngày';
 
-  const activeCityPool = cityPickerMode === 'origin' ? dbOrigins : dbDestinations;
-  const filteredCities = activeCityPool.filter(c =>
-    c.toLowerCase().includes(cityFilterText.trim().toLowerCase()),
+  const normalizedCityQuery = normalizeVi(cityFilterText);
+  const filteredPairedCities = pairedCityStats.filter(item =>
+    !normalizedCityQuery || normalizeVi(item.city).includes(normalizedCityQuery),
+  );
+  const filteredCities = allRegionPool.filter(c =>
+    !normalizedCityQuery || normalizeVi(c).includes(normalizedCityQuery),
+  );
+  const upcomingDirectTrips = useMemo(
+    () => (matchingTrips.length > 0 ? matchingTrips : dbTrips).slice(0, 4),
+    [matchingTrips, dbTrips],
   );
 
   return (
@@ -337,7 +433,20 @@ export default function PassengerHomeScreen() {
                   {origin || 'Tất cả điểm đi'}
                 </Text>
               </View>
-              <ChevronDownGlyph size={17} color={COLORS.slate400} />
+              {origin ? (
+                <Pressable
+                  onPress={e => {
+                    e.stopPropagation();
+                    setOrigin('');
+                  }}
+                  hitSlop={10}
+                  style={styles.clearInlineBtn}
+                >
+                  <Text style={styles.clearInlineText}>✕</Text>
+                </Pressable>
+              ) : (
+                <ChevronDownGlyph size={17} color={COLORS.slate400} />
+              )}
             </Pressable>
 
             <View style={styles.connectorLine} />
@@ -361,7 +470,20 @@ export default function PassengerHomeScreen() {
                   {destination || 'Tất cả điểm đến'}
                 </Text>
               </View>
-              <ChevronDownGlyph size={17} color={COLORS.slate400} />
+              {destination ? (
+                <Pressable
+                  onPress={e => {
+                    e.stopPropagation();
+                    setDestination('');
+                  }}
+                  hitSlop={10}
+                  style={styles.clearInlineBtn}
+                >
+                  <Text style={styles.clearInlineText}>✕</Text>
+                </Pressable>
+              ) : (
+                <ChevronDownGlyph size={17} color={COLORS.slate400} />
+              )}
             </Pressable>
 
             <Pressable
@@ -420,6 +542,55 @@ export default function PassengerHomeScreen() {
             </View>
           </View>
 
+          {/* Quick Date Chips right on Search Card for 1-tap picking */}
+          <View style={styles.quickDateRow}>
+            {[
+              { label: 'Tất cả ngày', value: '' },
+              { label: 'Hôm nay', value: localIsoDate(0) },
+              { label: 'Ngày mai', value: localIsoDate(1) },
+            ].map(chip => {
+              const active = date === chip.value;
+              return (
+                <Pressable
+                  key={chip.label}
+                  style={[styles.quickDateChip, active && styles.quickDateChipActive]}
+                  onPress={() => setDate(chip.value)}
+                >
+                  <Text
+                    style={[
+                      styles.quickDateChipText,
+                      active && styles.quickDateChipTextActive,
+                    ]}
+                  >
+                    {chip.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              style={[
+                styles.quickDateChip,
+                date !== '' &&
+                  date !== localIsoDate(0) &&
+                  date !== localIsoDate(1) &&
+                  styles.quickDateChipActive,
+              ]}
+              onPress={() => setDatePickerOpen(true)}
+            >
+              <Text
+                style={[
+                  styles.quickDateChipText,
+                  date !== '' &&
+                    date !== localIsoDate(0) &&
+                    date !== localIsoDate(1) &&
+                    styles.quickDateChipTextActive,
+                ]}
+              >
+                Ngày khác
+              </Text>
+            </Pressable>
+          </View>
+
           {validationError ? (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{validationError}</Text>
@@ -439,10 +610,24 @@ export default function PassengerHomeScreen() {
               style={styles.searchBtn}
             >
               <SearchGlyph size={18} color="#ffffff" />
-              <Text style={styles.searchBtnText}>Tìm chuyến</Text>
+              <Text style={styles.searchBtnText}>
+                {!loadingTrips && !tripsError && dbTrips.length > 0
+                  ? `Tìm chuyến (${matchingTrips.length} chuyến)`
+                  : 'Tìm chuyến'}
+              </Text>
             </LinearGradient>
           </Pressable>
         </View>
+
+        {tripsError ? (
+          <View style={styles.serverErrorCard}>
+            <Text style={styles.serverErrorTitle}>Chưa tải được danh sách chuyến</Text>
+            <Text style={styles.serverErrorBody}>{tripsError}</Text>
+            <Pressable style={styles.serverRetryBtn} onPress={() => void loadHomeData(false)}>
+              <Text style={styles.serverRetryText}>Thử tải lại</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {/* Figma PA-04 Tuyến phổ biến (Gradient cards + Route watermark) */}
         <View style={styles.section}>
@@ -519,6 +704,61 @@ export default function PassengerHomeScreen() {
           )}
         </View>
 
+        {/* Chuyến sắp khởi hành (1-tap mở chi tiết & đặt chỗ ngay) */}
+        {upcomingDirectTrips.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>Chuyến sắp khởi hành</Text>
+              <Pressable onPress={handleSearch}>
+                <Text style={styles.sectionLink}>Xem tất cả ({dbTrips.length})</Text>
+              </Pressable>
+            </View>
+            <View style={styles.recentList}>
+              {upcomingDirectTrips.map(t => (
+                <Pressable
+                  key={t.tripId}
+                  style={styles.upcomingCard}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/(passenger)/trip/[tripId]',
+                      params: {
+                        tripId: String(t.tripId),
+                        data: JSON.stringify(t),
+                        pax: String(Math.min(pax, Math.max(1, t.availableSeats))),
+                      },
+                    })
+                  }
+                >
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.upcomingTopRow}>
+                      <Text style={styles.upcomingRoute} numberOfLines={1}>
+                        {t.origin} → {t.destination}
+                      </Text>
+                      {(t.companyRatingCount ?? 0) > 0 && (t.companyRating ?? 0) > 0 ? (
+                        <Text style={styles.upcomingRating}>
+                          ★ {Number(t.companyRating).toFixed(1)}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.recentMeta} numberOfLines={1}>
+                      {formatDeparture(t.departureTime)} · {t.companyName ?? t.routeName}
+                    </Text>
+                    <Text style={styles.upcomingSeats}>
+                      Còn {t.availableSeats}/{t.seatCapacity ?? t.availableSeats} chỗ · {t.vehicleType}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                    <Text style={styles.upcomingPrice}>{formatVND(t.estimatedFare)}</Text>
+                    <View style={styles.bookNowPill}>
+                      <Text style={styles.bookNowPillText}>Đặt ngay</Text>
+                    </View>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
         {/* Figma PA-04 Đặt chỗ gần đây */}
         <View style={styles.section}>
           <View style={styles.sectionHead}>
@@ -579,44 +819,157 @@ export default function PassengerHomeScreen() {
           style={styles.sheetBackdrop}
         >
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setCityPickerMode(null)} />
-          <View style={styles.sheetContainer}>
+          <View style={[styles.sheetContainer, styles.citySheetContainer]}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>
-              {cityPickerMode === 'origin' ? 'Chọn điểm đi' : 'Chọn điểm đến'}
-            </Text>
+            <View style={styles.sheetHeaderRow}>
+              <View>
+                <Text style={styles.sheetTitle}>
+                  {cityPickerMode === 'origin' ? 'Chọn khu vực điểm đi' : 'Chọn khu vực điểm đến'}
+                </Text>
+                <Text style={styles.sheetSubtitle}>
+                  Chọn nhanh khu vực bên dưới hoặc gõ không dấu để lọc
+                </Text>
+              </View>
+              <Pressable
+                style={styles.sheetCloseBtn}
+                onPress={() => setCityPickerMode(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Đóng"
+              >
+                <Text style={styles.sheetCloseText}>✕</Text>
+              </Pressable>
+            </View>
+
             <TextInput
               style={styles.sheetSearchInput}
-              placeholder="Gõ tên thành phố / khu vực..."
+              placeholder="VD: Đà Nẵng, Huế, Hội An, Quang Nam..."
               placeholderTextColor={COLORS.slate400}
               value={cityFilterText}
               onChangeText={setCityFilterText}
               returnKeyType="done"
             />
-            <ScrollView style={styles.sheetList} keyboardShouldPersistTaps="handled">
-              <Pressable
-                style={styles.sheetItem}
-                onPress={() => {
-                  if (cityPickerMode === 'origin') setOrigin('');
-                  else setDestination('');
-                  setCityPickerMode(null);
-                }}
-              >
-                <Text style={styles.sheetItemText}>Tất cả khu vực</Text>
-                {(cityPickerMode === 'origin' ? origin : destination) === '' ? (
-                  <CheckGlyph size={18} color={COLORS.primary} />
-                ) : null}
-              </Pressable>
+
+            <ScrollView
+              style={styles.citySheetScroll}
+              contentContainerStyle={{ paddingBottom: 16 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Quick-pick area chips (1-tap region selection) */}
+              {!normalizedCityQuery ? (
+                <View style={styles.quickAreaBlock}>
+                  <Text style={styles.sheetGroupLabel}>CHỌN NHANH KHU VỰC</Text>
+                  <View style={styles.quickAreaWrap}>
+                    <Pressable
+                      style={[
+                        styles.areaChip,
+                        (cityPickerMode === 'origin' ? origin : destination) === '' &&
+                          styles.areaChipActive,
+                      ]}
+                      onPress={() => {
+                        if (cityPickerMode === 'origin') setOrigin('');
+                        else setDestination('');
+                        setCityPickerMode(null);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.areaChipText,
+                          (cityPickerMode === 'origin' ? origin : destination) === '' &&
+                            styles.areaChipTextActive,
+                        ]}
+                      >
+                        Tất cả khu vực
+                      </Text>
+                    </Pressable>
+                    {allRegionPool.slice(0, 8).map(city => {
+                      const active =
+                        normalizeVi(cityPickerMode === 'origin' ? origin : destination) ===
+                        normalizeVi(city);
+                      const count = dbCityCounts.get(city) ?? 0;
+                      return (
+                        <Pressable
+                          key={`chip-${city}`}
+                          style={[
+                            styles.areaChip,
+                            count > 0 && styles.areaChipLive,
+                            active && styles.areaChipActive,
+                          ]}
+                          onPress={() => {
+                            if (cityPickerMode === 'origin') setOrigin(city);
+                            else setDestination(city);
+                            setValidationError(null);
+                            setCityPickerMode(null);
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.areaChipText,
+                              count > 0 && styles.areaChipTextLive,
+                              active && styles.areaChipTextActive,
+                            ]}
+                          >
+                            {city}
+                            {count > 0 ? ` (${count})` : ''}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Context-aware connected cities when opposite endpoint is already selected */}
+              {filteredPairedCities.length > 0 ? (
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={styles.sheetGroupLabel}>
+                    {cityPickerMode === 'destination'
+                      ? `CÓ CHUYẾN TỪ ${origin.toUpperCase()}`
+                      : `CÓ CHUYẾN ĐẾN ${destination.toUpperCase()}`}
+                  </Text>
+                  {filteredPairedCities.map(item => {
+                    const selected =
+                      normalizeVi(cityPickerMode === 'origin' ? origin : destination) ===
+                      normalizeVi(item.city);
+                    return (
+                      <Pressable
+                        key={`paired-${item.city}`}
+                        style={styles.sheetItem}
+                        onPress={() => {
+                          if (cityPickerMode === 'origin') setOrigin(item.city);
+                          else setDestination(item.city);
+                          setValidationError(null);
+                          setCityPickerMode(null);
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                          <PinGlyph
+                            size={17}
+                            color={cityPickerMode === 'origin' ? COLORS.tealDark : COLORS.danger}
+                          />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.sheetItemText}>{item.city}</Text>
+                            <Text style={styles.sheetItemLiveMeta}>
+                              {item.tripCount} chuyến mở bán · từ {formatVND(item.minFare)}
+                            </Text>
+                          </View>
+                        </View>
+                        {selected ? <CheckGlyph size={18} color={COLORS.primary} /> : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
 
               {cityFilterText.trim() &&
-              !activeCityPool.some(
-                c => c.toLowerCase() === cityFilterText.trim().toLowerCase(),
-              ) ? (
+              !allRegionPool.some(c => normalizeVi(c) === normalizedCityQuery) ? (
                 <Pressable
                   style={styles.sheetItem}
                   onPress={() => {
                     const val = cityFilterText.trim();
                     if (cityPickerMode === 'origin') setOrigin(val);
                     else setDestination(val);
+                    setValidationError(null);
                     setCityPickerMode(null);
                   }}
                 >
@@ -626,10 +979,12 @@ export default function PassengerHomeScreen() {
                 </Pressable>
               ) : null}
 
+              <Text style={styles.sheetGroupLabel}>TẤT CẢ TỈNH / KHU VỰC</Text>
               {filteredCities.map(city => {
                 const selected =
-                  (cityPickerMode === 'origin' ? origin : destination).toLowerCase() ===
-                  city.toLowerCase();
+                  normalizeVi(cityPickerMode === 'origin' ? origin : destination) ===
+                  normalizeVi(city);
+                const count = dbCityCounts.get(city) ?? 0;
                 return (
                   <Pressable
                     key={city}
@@ -641,12 +996,17 @@ export default function PassengerHomeScreen() {
                       setCityPickerMode(null);
                     }}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
                       <PinGlyph
                         size={17}
                         color={cityPickerMode === 'origin' ? COLORS.tealDark : COLORS.danger}
                       />
                       <Text style={styles.sheetItemText}>{city}</Text>
+                      {count > 0 ? (
+                        <View style={styles.liveCountBadge}>
+                          <Text style={styles.liveCountBadgeText}>{count} chuyến</Text>
+                        </View>
+                      ) : null}
                     </View>
                     {selected ? <CheckGlyph size={18} color={COLORS.primary} /> : null}
                   </Pressable>
@@ -1004,6 +1364,135 @@ const styles = StyleSheet.create({
   },
   sheetItemText: { fontSize: 15, fontWeight: '600', color: COLORS.navy },
   sheetItemSub: { fontSize: 12, color: COLORS.slate500, marginTop: 2 },
+  sheetItemLiveMeta: { fontSize: 12, fontWeight: '600', color: COLORS.tealDark, marginTop: 2 },
+  clearInlineBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearInlineText: { fontSize: 12, fontWeight: '700', color: COLORS.slate500 },
+  quickDateRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  quickDateChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: COLORS.canvas,
+  },
+  quickDateChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primarySoft,
+  },
+  quickDateChipText: { fontSize: 12, fontWeight: '600', color: COLORS.slate600 },
+  quickDateChipTextActive: { color: COLORS.primary, fontWeight: '700' },
+  serverErrorCard: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: COLORS.dangerSoft,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    gap: 6,
+  },
+  serverErrorTitle: { fontSize: 14, fontWeight: '700', color: COLORS.danger },
+  serverErrorBody: { fontSize: 12, color: COLORS.navy, lineHeight: 17 },
+  serverRetryBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  serverRetryText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
+  upcomingCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#eaedf3',
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    ...CARD_SHADOW,
+  },
+  upcomingTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  upcomingRoute: { fontSize: 15, fontWeight: '800', color: COLORS.navy, flexShrink: 1 },
+  upcomingRating: { fontSize: 12, fontWeight: '700', color: '#b45309' },
+  upcomingSeats: { fontSize: 12, fontWeight: '600', color: COLORS.tealDark, marginTop: 3 },
+  upcomingPrice: { fontSize: 15, fontWeight: '800', color: COLORS.primary },
+  bookNowPill: {
+    backgroundColor: COLORS.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  bookNowPillText: { fontSize: 11, fontWeight: '700', color: COLORS.primary },
+  citySheetContainer: { minHeight: '60%', maxHeight: '86%' },
+  sheetHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 12,
+  },
+  sheetSubtitle: { fontSize: 12, color: COLORS.slate500, marginTop: 2 },
+  sheetCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.canvas,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetCloseText: { fontSize: 14, fontWeight: '700', color: COLORS.slate600 },
+  citySheetScroll: { flexGrow: 0, maxHeight: 420 },
+  quickAreaBlock: { marginBottom: 14 },
+  sheetGroupLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.slate500,
+    letterSpacing: 0.5,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  quickAreaWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  areaChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: COLORS.canvas,
+  },
+  areaChipLive: {
+    borderColor: '#99f6e4',
+    backgroundColor: '#f0fdfa',
+  },
+  areaChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary,
+  },
+  areaChipText: { fontSize: 13, fontWeight: '600', color: COLORS.navy },
+  areaChipTextLive: { color: COLORS.tealDark },
+  areaChipTextActive: { color: '#ffffff' },
+  liveCountBadge: {
+    backgroundColor: '#ccfbf1',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  liveCountBadgeText: { fontSize: 11, fontWeight: '700', color: COLORS.tealDark },
   customDateLabel: {
     fontSize: 12,
     fontWeight: '600',

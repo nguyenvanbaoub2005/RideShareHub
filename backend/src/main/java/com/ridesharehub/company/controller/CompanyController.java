@@ -60,6 +60,13 @@ public class CompanyController {
         return ResponseEntity.ok(ApiResponse.success(companyService.getMyCompany(principal)));
     }
 
+    @PutMapping("/me")
+    ResponseEntity<ApiResponse<CompanyResponse>> updateMyCompany(
+            @Valid @RequestBody CompanyRegistrationRequest req,
+            @AuthenticationPrincipal AuthPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.success(companyService.updateMyCompany(req, principal)));
+    }
+
     @GetMapping("/registrations")
     ResponseEntity<ApiResponse<List<CompanyResponse>>> listRegistrations() {
         return ResponseEntity.ok(ApiResponse.success(companyService.listRegistrations()));
@@ -69,6 +76,15 @@ public class CompanyController {
     ResponseEntity<ApiResponse<CompanyResponse>> getCompany(
             @PathVariable Long companyId) {
         return ResponseEntity.ok(ApiResponse.success(companyService.getCompany(companyId)));
+    }
+
+    @PutMapping("/{companyId}")
+    ResponseEntity<ApiResponse<CompanyResponse>> updateCompany(
+            @PathVariable Long companyId,
+            @Valid @RequestBody CompanyRegistrationRequest req,
+            @AuthenticationPrincipal AuthPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.success(
+                companyService.updateCompany(companyId, req, principal)));
     }
 
     // ================================================================== Vehicles

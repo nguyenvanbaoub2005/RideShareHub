@@ -2,12 +2,14 @@ package com.ridesharehub.trip.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
@@ -20,8 +22,8 @@ import com.ridesharehub.trip.repository.TripRepository;
 
 /**
  * SP2-P1-01: Trip search/filter for passengers.
- * SP2-P1-02: V1 fare estimation — returns route baseFare adjusted by
- *            a seat-demand factor when the trip is nearly full.
+ * SP2-P1-02: V1 fare estimation — returns the trip's configured per-seat fare
+ *            (MVP V1 excludes surge pricing per project specification section 5.13 & 12.2).
  */
 @Service
 @Transactional(readOnly = true)
@@ -31,17 +33,6 @@ public class TripSearchService {
     private static final int PAGE_SIZE = 50;
 
     private static final ZoneId SEARCH_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
-
-    /**
-     * Fare surcharge tiers (SP2-P1-02 V1 policy):
-     *  < 20 % remaining → +20 % surcharge
-     *  < 50 % remaining → +10 % surcharge
-     *  otherwise        → no surcharge
-     */
-    private static final BigDecimal SURCHARGE_HIGH   = new BigDecimal("0.20");
-    private static final BigDecimal SURCHARGE_MEDIUM = new BigDecimal("0.10");
-    private static final double     THRESHOLD_HIGH   = 0.20;
-    private static final double     THRESHOLD_MEDIUM = 0.50;
 
     private final TripRepository tripRepository;
     private final long bookCutoffMinutes;
@@ -93,6 +84,20 @@ public class TripSearchService {
                 origin, destination, from, to,
                 PageRequest.of(0, PAGE_SIZE));
 
+        // Fallback: Vietnamese accent-insensitive matching (e.g., "da nang" -> "Đà Nẵng", "hue" -> "Huế")
+        if (trips.isEmpty() && (origin != null || destination != null)) {
+            String normOrigin = origin != null ? normalizeVietnamese(origin) : null;
+            String normDest   = destination != null ? normalizeVietnamese(destination) : null;
+            List<Trip> candidates = tripRepository.searchPublished(
+                    null, null, from, to, PageRequest.of(0, PAGE_SIZE));
+            trips = candidates.stream()
+                    .filter(t -> normOrigin == null
+                            || normalizeVietnamese(t.getRoute().getOrigin()).contains(normOrigin))
+                    .filter(t -> normDest == null
+                            || normalizeVietnamese(t.getRoute().getDestination()).contains(normDest))
+                    .toList();
+        }
+
         return trips.stream()
                 .map(t -> toResult(t, minSeats, minBookableDeparture))
                 .filter(r -> r != null)
@@ -109,9 +114,14 @@ public class TripSearchService {
         if (trip.getDepartureTime() == null || trip.getDepartureTime().isBefore(minBookableDeparture)) {
             return null;
         }
+        if (trip.getCompany() != null
+                && trip.getCompany().getStatus() != null
+                && !trip.getCompany().isApproved()) {
+            return null;
+        }
 
-        int capacity      = trip.getVehicle().getSeatCapacity();
-        int bookedSeats   = trip.getBookedSeats();
+        int capacity       = trip.getVehicle().getSeatCapacity();
+        int bookedSeats    = trip.getBookedSeats();
         int availableSeats = capacity - bookedSeats;
 
         if (availableSeats < minSeats) {
@@ -119,6 +129,9 @@ public class TripSearchService {
         }
 
         BigDecimal estimatedFare = estimateFare(trip.getFare(), capacity, bookedSeats);
+        BigDecimal rating = trip.getCompany().getAvgRating() != null
+                ? trip.getCompany().getAvgRating()
+                : BigDecimal.ZERO;
 
         return new TripSearchResult(
                 trip.getId(),
@@ -134,36 +147,40 @@ public class TripSearchService {
                 capacity,
                 trip.getVehicle().getVehicleType(),
                 trip.getVehicle().getPlateNumber(),
+                trip.getVehicle().getBrand(),
+                trip.getVehicle().getModel(),
                 trip.getDriver().getFullName(),
+                trip.getCompany().getId(),
                 trip.getCompany().getName(),
+                rating,
+                trip.getCompany().getRatingCount(),
+                trip.getNote(),
                 trip.getStatus()
         );
     }
 
     /**
      * SP2-P1-02 V1 fare estimation:
-     * Applies a demand-based surcharge when available capacity is low.
+     * MVP V1 uses the trip/route fixed price without demand-based surge pricing
+     * (per project specification sections 5.13 and 12.2).
      * Result is rounded to 2 decimal places (HALF_UP).
      */
     public BigDecimal estimateFare(BigDecimal baseFare, int capacity, int bookedSeats) {
-        if (capacity <= 0) {
-            return baseFare;
+        if (baseFare == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
-        double remainingRatio = (double) (capacity - bookedSeats) / capacity;
-        BigDecimal surcharge;
-        if (remainingRatio < THRESHOLD_HIGH) {
-            surcharge = SURCHARGE_HIGH;
-        } else if (remainingRatio < THRESHOLD_MEDIUM) {
-            surcharge = SURCHARGE_MEDIUM;
-        } else {
-            surcharge = BigDecimal.ZERO;
-        }
-        return baseFare
-                .multiply(BigDecimal.ONE.add(surcharge))
-                .setScale(2, RoundingMode.HALF_UP);
+        return baseFare.setScale(2, RoundingMode.HALF_UP);
     }
 
     private static String blankToNull(String value) {
         return (value == null || value.isBlank()) ? null : value.strip();
+    }
+
+    private static String normalizeVietnamese(String input) {
+        if (input == null) return "";
+        String decomposed = Normalizer.normalize(input.trim().toLowerCase(Locale.ROOT), Normalizer.Form.NFD);
+        return decomposed
+                .replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+                .replace('đ', 'd');
     }
 }

@@ -107,13 +107,16 @@ public class Trip {
     }
 
     /**
-     * Cancels a trip — allowed from DRAFT or PUBLISHED.
+     * Cancels a trip — allowed from DRAFT, PUBLISHED or FULL (before departure/in-progress).
      */
     public void cancel() {
-        if (this.status == TripStatus.COMPLETED || this.status == TripStatus.CANCELLED) {
-            throw new IllegalStateException("Trip is already in terminal state: " + this.status);
+        if (this.status == TripStatus.IN_PROGRESS
+                || this.status == TripStatus.COMPLETED
+                || this.status == TripStatus.CANCELLED) {
+            throw new IllegalStateException("Trip cannot be cancelled in state: " + this.status);
         }
         this.status = TripStatus.CANCELLED;
+        this.bookedSeats = 0;
         this.updatedAt = Instant.now();
     }
 
