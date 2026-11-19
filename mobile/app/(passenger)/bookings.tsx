@@ -191,6 +191,50 @@ export default function PassengerBookingsScreen() {
           </View>
           <Text style={styles.fareText}>{formatVND(item.fareEstimate)}</Text>
         </View>
+
+        {item.status !== 'CANCELLED' && item.status !== 'NO_SHOW' ? (
+          <Pressable
+            style={{
+              marginTop: 10,
+              backgroundColor: item.status === 'PICKED_UP' ? '#ECFDF5' : '#EEF2FF',
+              borderColor: item.status === 'PICKED_UP' ? '#6EE7B7' : '#C7D2FE',
+              borderWidth: 1,
+              borderRadius: 11,
+              paddingVertical: 9,
+              paddingHorizontal: 12,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+            onPress={() =>
+              router.push({
+                pathname: '/(passenger)/tracking/[tripId]',
+                params: { tripId: String(item.tripId) },
+              } as never)
+            }
+            accessibilityRole="button"
+            accessibilityLabel="Theo dõi vị trí xe trực tiếp"
+          >
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '800',
+                color: item.status === 'PICKED_UP' ? '#065F46' : COLORS.primary,
+              }}
+            >
+              📡 Theo dõi xe & Lộ trình trực tiếp (Realtime)
+            </Text>
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '800',
+                color: item.status === 'PICKED_UP' ? '#065F46' : COLORS.primary,
+              }}
+            >
+              Xem bản đồ →
+            </Text>
+          </Pressable>
+        ) : null}
       </Pressable>
     );
   }
@@ -298,6 +342,36 @@ export default function PassengerBookingsScreen() {
                 <Text style={styles.navyTicketLabel}>Mã đặt chỗ</Text>
                 <Text style={styles.navyTicketCode}>{selected.bookingCode}</Text>
               </View>
+
+              {selected.status !== 'CANCELLED' && selected.status !== 'NO_SHOW' ? (
+                <Pressable
+                  style={{
+                    backgroundColor: COLORS.primary,
+                    borderRadius: 14,
+                    paddingVertical: 14,
+                    paddingHorizontal: 16,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    marginBottom: 4,
+                  }}
+                  onPress={() => {
+                    const tId = selected.tripId;
+                    setSelected(null);
+                    router.push({
+                      pathname: '/(passenger)/tracking/[tripId]',
+                      params: { tripId: String(tId) },
+                    } as never);
+                  }}
+                  accessibilityRole="button"
+                >
+                  <BusGlyph size={16} color="#ffffff" />
+                  <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '800' }}>
+                    📡 Mở bản đồ theo dõi xe trực tiếp (Realtime PA-13)
+                  </Text>
+                </Pressable>
+              ) : null}
 
               <Card>
                 <SectionHeading>Chuyến đi</SectionHeading>

@@ -144,6 +144,14 @@ export function ShieldCheckGlyph({ size = 16, color = COLORS.tealDark }: { size?
   return <ShieldCheck size={size} color={color} strokeWidth={2} />;
 }
 
+export function BackGlyph({ size = 18, color = '#ffffff' }: { size?: number; color?: string }) {
+  return <ChevronLeft size={size} color={color} strokeWidth={2.2} />;
+}
+
+export function SeatGlyph({ size = 16, color = COLORS.primary }: { size?: number; color?: string }) {
+  return <User size={size} color={color} strokeWidth={2} />;
+}
+
 /** Brand Logo matching Figma PA-01 / PA-02 */
 export function BrandLogo({
   size = 64,

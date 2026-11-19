@@ -7,6 +7,7 @@ export default function PassengerLayout() {
       <Stack.Screen name="results" />
       <Stack.Screen name="trip/[tripId]" />
       <Stack.Screen name="bookings" />
+      <Stack.Screen name="tracking/[tripId]" />
       <Stack.Screen name="account" />
     </Stack>
   );

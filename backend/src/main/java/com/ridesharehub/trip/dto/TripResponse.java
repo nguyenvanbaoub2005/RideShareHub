@@ -26,7 +26,35 @@ public record TripResponse(
         BigDecimal fare,
         String note,
         TripStatus status,
+        String assignmentStatus,
         Instant createdAt) {
+
+    public TripResponse(
+            Long id,
+            Long routeId,
+            String routeName,
+            String origin,
+            String destination,
+            int estimatedMinutes,
+            Long companyId,
+            String companyName,
+            Long vehicleId,
+            String vehiclePlate,
+            String vehicleType,
+            int seatCapacity,
+            int bookedSeats,
+            Long driverId,
+            String driverName,
+            Instant departureTime,
+            BigDecimal fare,
+            String note,
+            TripStatus status,
+            Instant createdAt) {
+        this(id, routeId, routeName, origin, destination, estimatedMinutes,
+                companyId, companyName, vehicleId, vehiclePlate, vehicleType,
+                seatCapacity, bookedSeats, driverId, driverName, departureTime,
+                fare, note, status, "ASSIGNED", createdAt);
+    }
 
     public static TripResponse from(Trip t) {
         return new TripResponse(
@@ -49,6 +77,7 @@ public record TripResponse(
                 t.getFare(),
                 t.getNote(),
                 t.getStatus(),
+                t.getAssignmentStatus() != null ? t.getAssignmentStatus().name() : "ASSIGNED",
                 t.getCreatedAt());
     }
 }

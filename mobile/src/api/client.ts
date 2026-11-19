@@ -293,6 +293,7 @@ export interface DriverTripSummary {
   fare?: number;
   note?: string | null;
   status: 'DRAFT' | 'PUBLISHED' | 'FULL' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  assignmentStatus?: 'ASSIGNED' | 'ACCEPTED' | 'REJECTED';
 }
 
 export interface DriverProfile {
@@ -460,6 +461,174 @@ export async function cancelBooking(
     },
   );
   return result.data;
+}
+
+// ---- Sprint 3 Person 2: Driver Execution & Realtime Live Tracking -----------
+
+export type TripStopType = 'PICKUP' | 'DROPOFF';
+export type TripStopStatus = 'PENDING' | 'ARRIVED' | 'COMPLETED' | 'SKIPPED';
+
+export interface TripStopRecord {
+  id: number;
+  tripId: number;
+  bookingId: number;
+  bookingCode: string;
+  passengerName: string;
+  passengerPhone?: string | null;
+  seatCount: number;
+  bookingStatus: BookingStatus;
+  stopType: TripStopType;
+  stopOrder: number;
+  address: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  status: TripStopStatus;
+  arrivedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export interface TripLiveSnapshot {
+  eventType: string;
+  tripId: number;
+  routeName: string;
+  origin: string;
+  destination: string;
+  departureTime: string;
+  estimatedMinutes: number;
+  tripStatus: 'DRAFT' | 'PUBLISHED' | 'FULL' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  assignmentStatus: 'ASSIGNED' | 'ACCEPTED' | 'REJECTED';
+  companyName: string;
+  vehiclePlate: string;
+  vehicleType: string;
+  driverName: string;
+  driverPhone?: string | null;
+  currentLat?: number | null;
+  currentLng?: number | null;
+  heading?: number | null;
+  speedKmh?: number | null;
+  locationUpdatedAt?: string | null;
+  locationStale: boolean;
+  nextStop?: TripStopRecord | null;
+  etaMinutesToNextStop?: number | null;
+  completedStopsCount: number;
+  totalStopsCount: number;
+  stops: TripStopRecord[];
+  recentEvents: string[];
+  serverTimestamp: string;
+}
+
+export interface DriverLocationPayload {
+  latitude: number;
+  longitude: number;
+  heading?: number | null;
+  speedKmh?: number | null;
+}
+
+export async function acceptDriverTrip(
+  accessToken: string,
+  tripId: number,
+): Promise<DriverTripSummary> {
+  const result = await request<DriverTripSummary>(`/api/v1/driver/trips/${tripId}/accept`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return result.data;
+}
+
+export async function rejectDriverTrip(
+  accessToken: string,
+  tripId: number,
+): Promise<DriverTripSummary> {
+  const result = await request<DriverTripSummary>(`/api/v1/driver/trips/${tripId}/reject`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return result.data;
+}
+
+export async function startDriverTrip(
+  accessToken: string,
+  tripId: number,
+): Promise<DriverTripSummary> {
+  const result = await request<DriverTripSummary>(`/api/v1/driver/trips/${tripId}/start`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return result.data;
+}
+
+export async function completeDriverTrip(
+  accessToken: string,
+  tripId: number,
+): Promise<DriverTripSummary> {
+  const result = await request<DriverTripSummary>(`/api/v1/driver/trips/${tripId}/complete`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return result.data;
+}
+
+export async function getDriverTripStops(
+  accessToken: string,
+  tripId: number,
+): Promise<TripStopRecord[]> {
+  const result = await request<TripStopRecord[]>(`/api/v1/driver/trips/${tripId}/stops`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return result.data;
+}
+
+export async function updateDriverStopStatus(
+  accessToken: string,
+  tripId: number,
+  stopId: number,
+  action: 'ARRIVED' | 'PICKED_UP' | 'DROPPED_OFF',
+): Promise<TripStopRecord> {
+  const result = await request<TripStopRecord>(
+    `/api/v1/driver/trips/${tripId}/stops/${stopId}/status`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ action }),
+    },
+  );
+  return result.data;
+}
+
+export async function sendDriverLocation(
+  accessToken: string,
+  tripId: number,
+  payload: DriverLocationPayload,
+): Promise<TripLiveSnapshot> {
+  const result = await request<TripLiveSnapshot>(
+    `/api/v1/driver/trips/${tripId}/location`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify(payload),
+    },
+  );
+  return result.data;
+}
+
+export async function getTripLiveSnapshot(
+  accessToken: string,
+  tripId: number,
+): Promise<TripLiveSnapshot> {
+  const result = await request<TripLiveSnapshot>(
+    `/api/v1/trips/${tripId}/live-snapshot`,
+    {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return result.data;
+}
+
+export function buildTripWebSocketUrl(tripId: number, accessToken: string): string {
+  const wsBase = BASE_URL.replace(/^http/, 'ws');
+  return `${wsBase}/ws/trips/${tripId}?token=${encodeURIComponent(accessToken)}`;
 }
 
 // ---- Error -----------------------------------------------------------------
