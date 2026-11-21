@@ -15,6 +15,7 @@ import { RouteFormPage } from './company/RouteFormPage';
 import { TripListPage } from './company/TripListPage';
 import { TripFormPage } from './company/TripFormPage';
 import { TripBookingOverviewPage } from './company/TripBookingOverviewPage';
+import { TripOptimizationPage } from './company/TripOptimizationPage';
 
 /** Redirects unauthenticated to /login */
 function RequireAdmin() {
@@ -69,6 +70,7 @@ export function App() {
           <Route path="/company/trips/new" element={<TripFormPage />} />
           <Route path="/company/trips/:tripId/edit" element={<TripFormPage />} />
           <Route path="/company/trips/:tripId/bookings" element={<TripBookingOverviewPage />} />
+          <Route path="/company/trips/:tripId/optimize" element={<TripOptimizationPage />} />
         </Route>
 
         <Route path="*" element={<DefaultRedirect />} />

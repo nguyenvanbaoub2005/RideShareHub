@@ -471,8 +471,8 @@ export type TripStopStatus = 'PENDING' | 'ARRIVED' | 'COMPLETED' | 'SKIPPED';
 export interface TripStopRecord {
   id: number;
   tripId: number;
-  bookingId: number;
-  bookingCode: string;
+  bookingId?: number | null;
+  bookingCode?: string | null;
   passengerName: string;
   passengerPhone?: string | null;
   seatCount: number;
@@ -485,6 +485,9 @@ export interface TripStopRecord {
   status: TripStopStatus;
   arrivedAt?: string | null;
   completedAt?: string | null;
+  plannedArrivalAt?: string | null;
+  proposalId?: number | null;
+  ownStop?: boolean | null;
 }
 
 export interface TripLiveSnapshot {
@@ -515,6 +518,10 @@ export interface TripLiveSnapshot {
   stops: TripStopRecord[];
   recentEvents: string[];
   serverTimestamp: string;
+  acceptedProposalId?: number | null;
+  routeOptimized?: boolean;
+  myNextStop?: TripStopRecord | null;
+  etaMinutesToMyStop?: number | null;
 }
 
 export interface DriverLocationPayload {

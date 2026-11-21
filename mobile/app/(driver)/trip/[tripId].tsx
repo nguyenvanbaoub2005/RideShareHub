@@ -377,7 +377,8 @@ export default function DriverTripDetailScreen() {
     stops.length === 0 || stops.every(s => s.status === 'COMPLETED' || s.status === 'SKIPPED');
 
   // Helper to check if a booking's PICKUP stop is already completed
-  function isBookingPickupCompleted(bookingId: number): boolean {
+  function isBookingPickupCompleted(bookingId: number | null | undefined): boolean {
+    if (bookingId == null) return true;
     const pickupStop = stops.find(s => s.bookingId === bookingId && s.stopType === 'PICKUP');
     if (!pickupStop) return true;
     return pickupStop.status === 'COMPLETED';

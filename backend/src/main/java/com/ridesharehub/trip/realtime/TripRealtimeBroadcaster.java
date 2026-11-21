@@ -1,7 +1,11 @@
 package com.ridesharehub.trip.realtime;
 
+import com.ridesharehub.auth.enums.UserRole;
+import com.ridesharehub.security.AuthPrincipal;
 import com.ridesharehub.trip.dto.TripLiveSnapshotResponse;
+import com.ridesharehub.trip.dto.TripStopResponse;
 import java.io.IOException;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -62,23 +66,29 @@ public class TripRealtimeBroadcaster {
     public void broadcast(Long tripId, TripLiveSnapshotResponse snapshot) {
         Set<WebSocketSession> sessions = sessionsByTrip.get(tripId);
         if (sessions == null || sessions.isEmpty()) return;
-        String json;
+        String fullJson;
+        String maskedPassengerJson;
         try {
-            json = objectMapper.writeValueAsString(snapshot);
+            fullJson = objectMapper.writeValueAsString(snapshot);
+            maskedPassengerJson = objectMapper.writeValueAsString(maskSnapshotForBroadcast(snapshot));
         } catch (Exception ex) {
             log.warn("Failed to serialize TripLiveSnapshotResponse for trip {}: {}", tripId, ex.getMessage());
             return;
         }
-        TextMessage message = new TextMessage(json);
+        TextMessage fullMessage = new TextMessage(fullJson);
+        TextMessage maskedMessage = new TextMessage(maskedPassengerJson);
         for (WebSocketSession session : sessions) {
             if (!session.isOpen()) {
                 sessions.remove(session);
                 continue;
             }
+            Object principalAttr = session.getAttributes().get("principal");
+            boolean isPassenger = principalAttr instanceof AuthPrincipal ap && ap.role() == UserRole.PASSENGER;
+            TextMessage payload = isPassenger ? maskedMessage : fullMessage;
             try {
                 synchronized (session) {
                     if (session.isOpen()) {
-                        session.sendMessage(message);
+                        session.sendMessage(payload);
                     }
                 }
             } catch (IOException ex) {
@@ -86,6 +96,72 @@ public class TripRealtimeBroadcaster {
                 sessions.remove(session);
             }
         }
+    }
+
+    /**
+     * SP3-P1-04: Masks personal details of passengers in shared WebSocket broadcasts
+     * so no passenger receives another passenger's name, phone, or booking code.
+     */
+    private static TripLiveSnapshotResponse maskSnapshotForBroadcast(TripLiveSnapshotResponse s) {
+        List<TripStopResponse> maskedStops = s.routeOptimized() && s.stops() != null
+                ? s.stops().stream().map(TripRealtimeBroadcaster::maskStop).toList()
+                : List.of();
+        TripStopResponse maskedNext = s.nextStop() != null ? maskStop(s.nextStop()) : null;
+        return new TripLiveSnapshotResponse(
+                s.eventType(),
+                s.tripId(),
+                s.routeName(),
+                s.origin(),
+                s.destination(),
+                s.departureTime(),
+                s.estimatedMinutes(),
+                s.tripStatus(),
+                s.assignmentStatus(),
+                s.companyName(),
+                s.vehiclePlate(),
+                s.vehicleType(),
+                s.driverName(),
+                s.driverPhone(),
+                s.currentLat(),
+                s.currentLng(),
+                s.heading(),
+                s.speedKmh(),
+                s.locationUpdatedAt(),
+                s.locationStale(),
+                maskedNext,
+                s.etaMinutesToNextStop(),
+                s.completedStopsCount(),
+                s.totalStopsCount(),
+                maskedStops,
+                s.recentEvents(),
+                s.serverTimestamp(),
+                s.acceptedProposalId(),
+                s.routeOptimized(),
+                null,
+                null);
+    }
+
+    private static TripStopResponse maskStop(TripStopResponse st) {
+        return new TripStopResponse(
+                st.id(),
+                st.tripId(),
+                null,
+                null,
+                "Hành khách",
+                null,
+                st.seatCount(),
+                st.bookingStatus(),
+                st.stopType(),
+                st.stopOrder(),
+                "Điểm dừng dọc tuyến",
+                st.latitude(),
+                st.longitude(),
+                st.status(),
+                st.arrivedAt(),
+                st.completedAt(),
+                st.plannedArrivalAt(),
+                st.proposalId(),
+                null);
     }
 
     public int activeSubscribersCount(Long tripId) {

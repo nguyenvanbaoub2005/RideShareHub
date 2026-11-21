@@ -20,6 +20,9 @@ booking:
     auto-confirm: ${BOOKING_AUTO_CONFIRM:true}
     book-cutoff-minutes: ${BOOKING_BOOK_CUTOFF_MINUTES:15}
     cancel-cutoff-minutes: ${BOOKING_CANCEL_CUTOFF_MINUTES:30}
+optimizer:
+  base-url: ${OPTIMIZER_BASE_URL:http://localhost:8000}
+  timeout-ms: ${OPTIMIZER_TIMEOUT_MS:8000}
 server:
   error:
     include-message: always

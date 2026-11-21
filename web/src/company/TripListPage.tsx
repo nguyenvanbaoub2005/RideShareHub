@@ -292,6 +292,13 @@ export function TripListPage() {
                         >
                           Đặt chỗ
                         </Link>
+                        <Link
+                          id={`optimize-trip-${t.id}`}
+                          className="btn btn--ghost btn--sm"
+                          to={`/company/trips/${t.id}/optimize`}
+                        >
+                          Tối ưu lộ trình
+                        </Link>
                         {t.status === 'DRAFT' && (
                           <>
                             <button
