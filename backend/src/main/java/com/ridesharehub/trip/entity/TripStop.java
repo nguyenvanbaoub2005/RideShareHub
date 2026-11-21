@@ -70,6 +70,12 @@ public class TripStop {
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    @Column(name = "planned_arrival_at")
+    private Instant plannedArrivalAt;
+
+    @Column(name = "proposal_id")
+    private Long proposalId;
+
     @Version
     @Column(nullable = false)
     private long version = 0L;
@@ -125,6 +131,13 @@ public class TripStop {
         this.updatedAt = Instant.now();
     }
 
+    public void applyOptimization(int newOrder, Instant plannedArrivalAt, Long proposalId) {
+        this.stopOrder = newOrder;
+        this.plannedArrivalAt = plannedArrivalAt;
+        this.proposalId = proposalId;
+        this.updatedAt = Instant.now();
+    }
+
     public Long getId()                { return id; }
     public Trip getTrip()              { return trip; }
     public Booking getBooking()        { return booking; }
@@ -136,6 +149,8 @@ public class TripStop {
     public TripStopStatus getStatus()  { return status; }
     public Instant getArrivedAt()      { return arrivedAt; }
     public Instant getCompletedAt()    { return completedAt; }
+    public Instant getPlannedArrivalAt() { return plannedArrivalAt; }
+    public Long getProposalId()        { return proposalId; }
     public long getVersion()           { return version; }
     public Instant getCreatedAt()      { return createdAt; }
     public Instant getUpdatedAt()      { return updatedAt; }

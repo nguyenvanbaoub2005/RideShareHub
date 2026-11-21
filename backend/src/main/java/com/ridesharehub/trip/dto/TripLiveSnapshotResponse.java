@@ -7,7 +7,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * SP3-P2-02 & SP3-P2-04: Authoritative live tracking snapshot for a Trip.
+ * SP3-P1-04 & SP3-P2-02: Authoritative live tracking snapshot for a Trip.
  * Used both as REST response (GET /api/v1/trips/{tripId}/live-snapshot)
  * and as WebSocket event payload (/ws/trips/{tripId}).
  */
@@ -38,5 +38,9 @@ public record TripLiveSnapshotResponse(
         int totalStopsCount,
         List<TripStopResponse> stops,
         List<String> recentEvents,
-        Instant serverTimestamp) {
+        Instant serverTimestamp,
+        Long acceptedProposalId,
+        boolean routeOptimized,
+        TripStopResponse myNextStop,
+        Integer etaMinutesToMyStop) {
 }

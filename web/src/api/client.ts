@@ -449,3 +449,98 @@ export const tripApi = {
       body: JSON.stringify({ reason: reason ?? 'Hành khách không có mặt tại điểm đón' }),
     }),
 };
+
+// ------------------------------------------------------------------ SP3-P1: TripStops & Route Optimization
+export type TripStopType = 'PICKUP' | 'DROPOFF';
+export type TripStopStatus = 'PENDING' | 'ARRIVED' | 'COMPLETED' | 'SKIPPED';
+export type RouteProposalStatus = 'PROPOSED' | 'ACCEPTED' | 'REJECTED' | 'SUPERSEDED';
+
+export interface TripStopResponse {
+  id: number;
+  tripId: number;
+  bookingId: number | null;
+  bookingCode: string | null;
+  passengerName: string;
+  passengerPhone?: string | null;
+  seatCount: number;
+  bookingStatus: string;
+  stopType: TripStopType;
+  stopOrder: number;
+  address: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  status: TripStopStatus;
+  arrivedAt?: string | null;
+  completedAt?: string | null;
+  plannedArrivalAt?: string | null;
+  proposalId?: number | null;
+  ownStop?: boolean | null;
+}
+
+export interface RouteProposalStopResponse {
+  id: number;
+  bookingId: number;
+  bookingCode: string;
+  passengerName: string;
+  seatCount: number;
+  stopType: TripStopType;
+  stopOrder: number;
+  address: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  seatDelta: number;
+  cumulativeSeatsOnBoard: number;
+  distanceFromPrevKm: number;
+  etaOffsetMinutes: number;
+  plannedArrivalAt?: string | null;
+}
+
+export interface RouteProposalResponse {
+  id: number;
+  tripId: number;
+  status: RouteProposalStatus;
+  solverEngine: string;
+  solverStatus: string;
+  totalDistanceKm: number;
+  baselineDistanceKm: number;
+  distanceSavedKm: number;
+  totalDurationMinutes: number;
+  maxSeatsOnBoard: number;
+  vehicleCapacity: number;
+  rejectReason?: string | null;
+  createdByUserId?: number | null;
+  reviewedByUserId?: number | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+  stops: RouteProposalStopResponse[];
+}
+
+export const optimizationApi = {
+  listTripStops: (tripId: number) =>
+    request<TripStopResponse[]>(`/api/v1/trips/${tripId}/stops`),
+
+  syncTripStops: (tripId: number, orderedStopIds?: number[]) =>
+    request<TripStopResponse[]>(`/api/v1/trips/${tripId}/stops`, {
+      method: 'POST',
+      body: JSON.stringify({ orderedStopIds: orderedStopIds ?? null }),
+    }),
+
+  optimizeTrip: (tripId: number) =>
+    request<RouteProposalResponse>(`/api/v1/trips/${tripId}/optimize`, {
+      method: 'POST',
+    }),
+
+  listProposals: (tripId: number) =>
+    request<RouteProposalResponse[]>(`/api/v1/trips/${tripId}/proposals`),
+
+  acceptProposal: (tripId: number, proposalId: number) =>
+    request<RouteProposalResponse>(`/api/v1/trips/${tripId}/proposals/${proposalId}/accept`, {
+      method: 'POST',
+    }),
+
+  rejectProposal: (tripId: number, proposalId: number, reason?: string) =>
+    request<RouteProposalResponse>(`/api/v1/trips/${tripId}/proposals/${proposalId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason ?? null }),
+    }),
+};

@@ -64,8 +64,18 @@ function formatTime(iso?: string | null): string {
   });
 }
 
+function formatShortTime(iso?: string | null): string {
+  if (!iso) return '--:--';
+  return new Date(iso).toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function describeEventBadge(eventType?: string): string | null {
   switch (eventType) {
+    case 'ROUTE_PROPOSAL_ACCEPTED':
+      return '🗺 Nhà xe đã duyệt lộ trình đón/trả tối ưu mới';
     case 'TRIP_ACCEPTED':
       return '🔔 Tài xế đã xác nhận nhận chuyến đi';
     case 'TRIP_STARTED':
@@ -157,7 +167,37 @@ export default function PassengerLiveTrackingScreen() {
         try {
           const payload = JSON.parse(String(event.data)) as TripLiveSnapshot;
           if (payload && payload.tripId) {
-            setSnapshot(payload);
+            if (payload.eventType === 'SNAPSHOT' && payload.myNextStop !== undefined) {
+              setSnapshot(payload);
+            } else {
+              // Merge live GPS/status smoothly while preserving passenger-scoped ownStop & personal ETA
+              setSnapshot(prev =>
+                prev
+                  ? {
+                      ...prev,
+                      eventType: payload.eventType,
+                      tripStatus: payload.tripStatus,
+                      currentLat: payload.currentLat ?? prev.currentLat,
+                      currentLng: payload.currentLng ?? prev.currentLng,
+                      heading: payload.heading ?? prev.heading,
+                      speedKmh: payload.speedKmh ?? prev.speedKmh,
+                      locationUpdatedAt: payload.locationUpdatedAt ?? prev.locationUpdatedAt,
+                      locationStale: payload.locationStale,
+                      completedStopsCount: payload.completedStopsCount,
+                      totalStopsCount: payload.totalStopsCount,
+                      recentEvents: payload.recentEvents?.length
+                        ? payload.recentEvents
+                        : prev.recentEvents,
+                      routeOptimized: payload.routeOptimized ?? prev.routeOptimized,
+                      acceptedProposalId: payload.acceptedProposalId ?? prev.acceptedProposalId,
+                    }
+                  : payload,
+              );
+              // Re-sync personalized stops & personal ETA when route/stops change
+              if (payload.eventType !== 'LOCATION_UPDATED') {
+                fetchRestSnapshot(true);
+              }
+            }
             setErrorMsg(null);
             const toastText = describeEventBadge(payload.eventType);
             if (toastText) {
@@ -448,6 +488,65 @@ export default function PassengerLiveTrackingScreen() {
             </View>
           </View>
 
+          {/* SP3-P1-04: Passenger's Own Stop & Personal ETA Card */}
+          {snapshot.myNextStop ? (
+            <View
+              style={[
+                styles.card,
+                {
+                  borderColor: '#6EE7B7',
+                  borderWidth: 1.5,
+                  backgroundColor: '#ECFDF5',
+                },
+              ]}
+            >
+              <View style={styles.nextStopHeader}>
+                <Text style={[styles.nextStopLabel, { color: '#065F46' }]}>
+                  ĐIỂM CỦA BẠN &amp; ETA DỰ KIẾN (PA-13)
+                </Text>
+                {snapshot.etaMinutesToMyStop != null ? (
+                  <View style={[styles.etaBadge, { backgroundColor: COLORS.emerald }]}>
+                    <ClockGlyph size={13} color="#ffffff" />
+                    <Text style={styles.etaBadgeText}>
+                      {snapshot.etaMinutesToMyStop === 0
+                        ? 'Xe đã đến điểm của bạn'
+                        : `~${snapshot.etaMinutesToMyStop} phút`}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <View
+                  style={[
+                    styles.stopTypePill,
+                    snapshot.myNextStop.stopType === 'PICKUP'
+                      ? { backgroundColor: '#A7F3D0' }
+                      : { backgroundColor: '#C7D2FE' },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '800',
+                      color: snapshot.myNextStop.stopType === 'PICKUP' ? '#065F46' : '#3730A3',
+                    }}
+                  >
+                    {snapshot.myNextStop.stopType === 'PICKUP'
+                      ? 'ĐIỂM ĐÓN CỦA BẠN'
+                      : 'ĐIỂM TRẢ CỦA BẠN'}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#047857' }}>
+                  Thứ tự #{snapshot.myNextStop.stopOrder}
+                  {snapshot.myNextStop.plannedArrivalAt
+                    ? ` · Dự kiến ${formatShortTime(snapshot.myNextStop.plannedArrivalAt)}`
+                    : ''}
+                </Text>
+              </View>
+              <Text style={styles.nextStopAddress}>{snapshot.myNextStop.address}</Text>
+            </View>
+          ) : null}
+
           {/* Next Stop & ETA Card */}
           <View style={[styles.card, styles.nextStopCard]}>
             <View style={styles.nextStopHeader}>
@@ -549,11 +648,48 @@ export default function PassengerLiveTrackingScreen() {
             </View>
           </View>
 
-          {/* Ordered Stops Timeline */}
+          {/* Ordered Stops Timeline (SP3-P1-04: Approved proposal stops & passenger privacy) */}
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-              THỨ TỰ ĐIỂM ĐÓN / TRẢ TRÊN CHUYẾN ({snapshot.stops.length})
-            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 8,
+                gap: 8,
+              }}
+            >
+              <Text style={[styles.sectionTitle, { marginBottom: 0, flex: 1 }]}>
+                LỘ TRÌNH ĐÓN / TRẢ DỰ KIẾN ({snapshot.stops.length})
+              </Text>
+              <View
+                style={{
+                  backgroundColor: snapshot.routeOptimized ? '#DCFCE7' : '#FEF3C7',
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: 999,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '800',
+                    color: snapshot.routeOptimized ? '#166534' : '#92400E',
+                  }}
+                >
+                  {snapshot.routeOptimized
+                    ? `✓ Đã duyệt lộ trình tối ưu #${snapshot.acceptedProposalId}`
+                    : 'Đang chờ duyệt lộ trình tối ưu'}
+                </Text>
+              </View>
+            </View>
+
+            {!snapshot.routeOptimized ? (
+              <Text style={{ fontSize: 12, color: COLORS.slate500, marginBottom: 10, lineHeight: 17 }}>
+                Nhà xe chưa chốt đề xuất lộ trình tối ưu — vì lý do bảo mật, hệ thống hiện chỉ hiển thị điểm đón/trả riêng của bạn.
+              </Text>
+            ) : null}
+
             {snapshot.stops.length === 0 ? (
               <Text style={styles.emptyMeta}>Chưa có danh sách điểm dừng trên chuyến này.</Text>
             ) : (
@@ -561,11 +697,13 @@ export default function PassengerLiveTrackingScreen() {
                 const isPickup = stop.stopType === 'PICKUP';
                 const isDone = stop.status === 'COMPLETED';
                 const isArrived = stop.status === 'ARRIVED';
+                const isOwn = stop.ownStop === true;
                 return (
                   <View
                     key={stop.id}
                     style={[
                       styles.stopRow,
+                      isOwn && { borderColor: COLORS.primary, backgroundColor: '#F5F3FF' },
                       isDone && styles.stopRowDone,
                       isArrived && styles.stopRowArrived,
                     ]}
@@ -577,13 +715,15 @@ export default function PassengerLiveTrackingScreen() {
                           ? { backgroundColor: COLORS.emerald }
                           : isArrived
                             ? { backgroundColor: '#D97706' }
-                            : { backgroundColor: COLORS.slate300 },
+                            : isOwn
+                              ? { backgroundColor: COLORS.primary }
+                              : { backgroundColor: COLORS.slate300 },
                       ]}
                     >
                       <Text style={styles.stopBadgeText}>#{idx + 1}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <Text
                           style={{
                             fontSize: 11,
@@ -593,14 +733,33 @@ export default function PassengerLiveTrackingScreen() {
                         >
                           {isPickup ? 'ĐÓN KHÁCH' : 'TRẢ KHÁCH'}
                         </Text>
+                        {isOwn ? (
+                          <View
+                            style={{
+                              backgroundColor: COLORS.primary,
+                              paddingHorizontal: 6,
+                              paddingVertical: 1,
+                              borderRadius: 6,
+                            }}
+                          >
+                            <Text style={{ color: '#ffffff', fontSize: 9, fontWeight: '800' }}>
+                              ĐIỂM CỦA BẠN
+                            </Text>
+                          </View>
+                        ) : null}
                         <Text style={{ fontSize: 11, color: COLORS.slate500 }}>
-                          · {stop.passengerName} ({stop.seatCount} ghế)
+                          · {isOwn ? `${stop.passengerName} (${stop.seatCount} ghế)` : 'Hành khách khác'}
                         </Text>
                       </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
                         <PinGlyph size={13} color={COLORS.slate500} />
                         <Text style={styles.stopAddr}>{stop.address}</Text>
                       </View>
+                      {stop.plannedArrivalAt ? (
+                        <Text style={{ fontSize: 11, color: COLORS.slate500, marginTop: 2 }}>
+                          Giờ đến dự kiến: {formatShortTime(stop.plannedArrivalAt)}
+                        </Text>
+                      ) : null}
                     </View>
                     <Text
                       style={[

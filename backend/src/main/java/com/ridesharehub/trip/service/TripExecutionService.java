@@ -15,13 +15,16 @@ import com.ridesharehub.trip.dto.StopStatusUpdateRequest;
 import com.ridesharehub.trip.dto.TripLiveSnapshotResponse;
 import com.ridesharehub.trip.dto.TripResponse;
 import com.ridesharehub.trip.dto.TripStopResponse;
+import com.ridesharehub.trip.entity.RouteProposal;
 import com.ridesharehub.trip.entity.Trip;
 import com.ridesharehub.trip.entity.TripStop;
 import com.ridesharehub.trip.enums.DriverAssignmentStatus;
+import com.ridesharehub.trip.enums.RouteProposalStatus;
 import com.ridesharehub.trip.enums.TripStatus;
 import com.ridesharehub.trip.enums.TripStopStatus;
 import com.ridesharehub.trip.enums.TripStopType;
 import com.ridesharehub.trip.realtime.TripRealtimeBroadcaster;
+import com.ridesharehub.trip.repository.RouteProposalRepository;
 import com.ridesharehub.trip.repository.TripRepository;
 import com.ridesharehub.trip.repository.TripStopRepository;
 import java.math.BigDecimal;
@@ -59,6 +62,24 @@ public class TripExecutionService {
     private final DriverRepository driverRepository;
     private final VehicleRepository vehicleRepository;
     private final TripRealtimeBroadcaster realtimeBroadcaster;
+    private final RouteProposalRepository routeProposalRepository;
+
+    public TripExecutionService(
+            TripRepository tripRepository,
+            TripStopRepository tripStopRepository,
+            BookingRepository bookingRepository,
+            DriverRepository driverRepository,
+            VehicleRepository vehicleRepository,
+            TripRealtimeBroadcaster realtimeBroadcaster) {
+        this(
+                tripRepository,
+                tripStopRepository,
+                bookingRepository,
+                driverRepository,
+                vehicleRepository,
+                realtimeBroadcaster,
+                null);
+    }
 
     @Autowired
     public TripExecutionService(
@@ -67,13 +88,15 @@ public class TripExecutionService {
             BookingRepository bookingRepository,
             DriverRepository driverRepository,
             VehicleRepository vehicleRepository,
-            TripRealtimeBroadcaster realtimeBroadcaster) {
+            TripRealtimeBroadcaster realtimeBroadcaster,
+            RouteProposalRepository routeProposalRepository) {
         this.tripRepository = tripRepository;
         this.tripStopRepository = tripStopRepository;
         this.bookingRepository = bookingRepository;
         this.driverRepository = driverRepository;
         this.vehicleRepository = vehicleRepository;
         this.realtimeBroadcaster = realtimeBroadcaster;
+        this.routeProposalRepository = routeProposalRepository;
     }
 
     // ================================================================== SP3-P2-01b: Accept / Reject
@@ -203,7 +226,12 @@ public class TripExecutionService {
     /** GET /api/v1/trips/{tripId}/stops */
     public List<TripStopResponse> listTripStopsForViewer(Long tripId, AuthPrincipal principal) {
         Trip trip = requireTripForViewer(tripId, principal);
-        return getActiveStops(trip).stream()
+        List<TripStop> activeStops = getActiveStops(trip);
+        if (principal.role() == UserRole.PASSENGER) {
+            Long acceptedProposalId = findAcceptedProposalId(tripId);
+            return projectStopsForPassenger(activeStops, principal.userId(), acceptedProposalId != null);
+        }
+        return activeStops.stream()
                 .map(TripStopResponse::from)
                 .toList();
     }
@@ -355,7 +383,12 @@ public class TripExecutionService {
     /** GET /api/v1/trips/{tripId}/live-snapshot & /tracking */
     public TripLiveSnapshotResponse getLiveSnapshot(Long tripId, AuthPrincipal principal) {
         Trip trip = requireTripForViewer(tripId, principal);
-        return buildSnapshot(trip, "SNAPSHOT");
+        return buildSnapshot(trip, "SNAPSHOT", principal);
+    }
+
+    /** Called by RouteOptimizationService when a proposal is ACCEPTED. */
+    public void broadcastRouteUpdated(Trip trip) {
+        broadcastSnapshot(trip, "ROUTE_PROPOSAL_ACCEPTED");
     }
 
     /** Used by WebSocket handshake/connection handler to authorize subscription. */
@@ -503,15 +536,24 @@ public class TripExecutionService {
 
     private void broadcastSnapshot(Trip trip, String eventType) {
         if (realtimeBroadcaster == null) return;
-        TripLiveSnapshotResponse snapshot = buildSnapshot(trip, eventType);
+        TripLiveSnapshotResponse snapshot = buildSnapshot(trip, eventType, null);
         realtimeBroadcaster.broadcast(trip.getId(), snapshot);
     }
 
     private TripLiveSnapshotResponse buildSnapshot(Trip trip, String eventType) {
+        return buildSnapshot(trip, eventType, null);
+    }
+
+    private TripLiveSnapshotResponse buildSnapshot(
+            Trip trip, String eventType, AuthPrincipal viewer) {
         List<TripStop> activeStops = getActiveStops(trip);
-        List<TripStopResponse> stopDtos = activeStops.stream()
-                .map(TripStopResponse::from)
-                .toList();
+        Long acceptedProposalId = findAcceptedProposalId(trip.getId());
+        boolean routeOptimized = acceptedProposalId != null;
+
+        boolean isPassengerViewer = viewer != null && viewer.role() == UserRole.PASSENGER;
+        List<TripStopResponse> stopDtos = isPassengerViewer
+                ? projectStopsForPassenger(activeStops, viewer.userId(), routeOptimized)
+                : activeStops.stream().map(TripStopResponse::from).toList();
 
         int completedCount = (int) stopDtos.stream()
                 .filter(s -> s.status() == TripStopStatus.COMPLETED)
@@ -520,6 +562,16 @@ public class TripExecutionService {
                 .filter(s -> s.status() != TripStopStatus.COMPLETED && s.status() != TripStopStatus.SKIPPED)
                 .findFirst()
                 .orElse(null);
+
+        TripStopResponse myNextStop = null;
+        if (isPassengerViewer) {
+            myNextStop = stopDtos.stream()
+                    .filter(s -> Boolean.TRUE.equals(s.ownStop())
+                            && s.status() != TripStopStatus.COMPLETED
+                            && s.status() != TripStopStatus.SKIPPED)
+                    .findFirst()
+                    .orElse(null);
+        }
 
         Instant locTime = trip.getLastLocationAt();
         boolean isStale = false;
@@ -533,6 +585,7 @@ public class TripExecutionService {
         }
 
         Integer etaMinutes = computeEtaMinutes(trip, nextStop);
+        Integer etaToMyStop = myNextStop != null ? computeEtaMinutes(trip, myNextStop) : null;
         List<String> recentEvents = buildRecentEvents(trip, stopDtos);
 
         return new TripLiveSnapshotResponse(
@@ -562,7 +615,34 @@ public class TripExecutionService {
                 stopDtos.size(),
                 stopDtos,
                 recentEvents,
-                Instant.now());
+                Instant.now(),
+                acceptedProposalId,
+                routeOptimized,
+                myNextStop,
+                etaToMyStop);
+    }
+
+    private Long findAcceptedProposalId(Long tripId) {
+        if (routeProposalRepository == null) return null;
+        return routeProposalRepository
+                .findFirstByTrip_IdAndStatusOrderByReviewedAtDescIdDesc(tripId, RouteProposalStatus.ACCEPTED)
+                .map(RouteProposal::getId)
+                .orElse(null);
+    }
+
+    /**
+     * SP3-P1-04:
+     * - When an ACCEPTED optimization proposal exists, expose the full approved stop sequence
+     *   with sensitive info of other passengers masked.
+     * - Before any proposal is ACCEPTED, expose only the viewer's own stops so unapproved routes
+     *   and other passengers' locations are never leaked.
+     */
+    private List<TripStopResponse> projectStopsForPassenger(
+            List<TripStop> activeStops, Long viewerUserId, boolean hasAcceptedProposal) {
+        return activeStops.stream()
+                .filter(s -> hasAcceptedProposal || s.getBooking().getPassenger().getId().equals(viewerUserId))
+                .map(s -> TripStopResponse.forPassenger(s, viewerUserId))
+                .toList();
     }
 
     private static Integer computeEtaMinutes(Trip trip, TripStopResponse nextStop) {

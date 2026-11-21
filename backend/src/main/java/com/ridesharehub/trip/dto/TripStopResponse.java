@@ -8,7 +8,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
- * SP3-P2-01 / SP3-P2-03: Stop view returned to Driver and Passenger tracking screens.
+ * SP3-P1-01 / SP3-P1-04 / SP3-P2-01: Stop view returned to Company, Driver, and Passenger screens.
+ * For PASSENGER viewers, {@link #forPassenger(TripStop, Long)} masks sensitive details of other passengers.
  */
 public record TripStopResponse(
         Long id,
@@ -26,7 +27,10 @@ public record TripStopResponse(
         BigDecimal longitude,
         TripStopStatus status,
         Instant arrivedAt,
-        Instant completedAt) {
+        Instant completedAt,
+        Instant plannedArrivalAt,
+        Long proposalId,
+        Boolean ownStop) {
 
     public static TripStopResponse from(TripStop s) {
         var b = s.getBooking();
@@ -47,6 +51,50 @@ public record TripStopResponse(
                 s.getLongitude(),
                 s.getStatus(),
                 s.getArrivedAt(),
-                s.getCompletedAt());
+                s.getCompletedAt(),
+                s.getPlannedArrivalAt(),
+                s.getProposalId(),
+                null);
+    }
+
+    /**
+     * SP3-P1-04: Passenger-scoped stop projection that masks other passengers' personal information
+     * (name, phone, booking code) while keeping full details for the viewer's own stops.
+     */
+    public static TripStopResponse forPassenger(TripStop s, Long viewerUserId) {
+        var b = s.getBooking();
+        var p = b.getPassenger();
+        boolean isOwn = viewerUserId != null && p.getId().equals(viewerUserId);
+        return new TripStopResponse(
+                s.getId(),
+                s.getTrip().getId(),
+                isOwn ? b.getId() : null,
+                isOwn ? b.getBookingCode() : null,
+                isOwn ? p.getFullName() : "Hành khách khác",
+                isOwn ? p.getPhone() : null,
+                b.getSeatCount(),
+                b.getStatus(),
+                s.getStopType(),
+                s.getStopOrder(),
+                isOwn ? s.getAddress() : maskAddressForOtherPassenger(s.getAddress()),
+                s.getLatitude(),
+                s.getLongitude(),
+                s.getStatus(),
+                s.getArrivedAt(),
+                s.getCompletedAt(),
+                s.getPlannedArrivalAt(),
+                s.getProposalId(),
+                isOwn);
+    }
+
+    private static String maskAddressForOtherPassenger(String address) {
+        if (address == null || address.isBlank()) {
+            return "Điểm dừng dọc tuyến";
+        }
+        String[] parts = address.split(",");
+        if (parts.length >= 2) {
+            return "Khu vực " + parts[parts.length - 2].trim() + ", " + parts[parts.length - 1].trim();
+        }
+        return "Điểm dừng dọc tuyến";
     }
 }
