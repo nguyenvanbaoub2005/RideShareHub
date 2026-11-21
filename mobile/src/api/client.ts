@@ -638,6 +638,76 @@ export function buildTripWebSocketUrl(tripId: number, accessToken: string): stri
   return `${wsBase}/ws/trips/${tripId}?token=${encodeURIComponent(accessToken)}`;
 }
 
+// ---- Sprint 4 Person 2: Driver Incident Reporting (SP4-P2-01 / DR-09) -------
+
+export type TripIncidentType =
+  | 'VEHICLE_ISSUE'
+  | 'TRAFFIC_ACCIDENT'
+  | 'HEAVY_TRAFFIC'
+  | 'PASSENGER_NO_SHOW'
+  | 'SAFETY_CONCERN'
+  | 'OTHER';
+
+export interface TripIncidentRecord {
+  id: number;
+  tripId: number;
+  routeName: string;
+  origin: string;
+  destination: string;
+  companyId: number;
+  companyName: string;
+  vehiclePlate: string;
+  driverId: number;
+  driverName: string;
+  driverPhone?: string | null;
+  incidentType: TripIncidentType;
+  incidentTypeLabel: string;
+  description: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  status: 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
+  resolutionNote?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+}
+
+export interface ReportIncidentPayload {
+  incidentType: TripIncidentType;
+  description: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+export async function reportDriverTripIncident(
+  accessToken: string,
+  tripId: number,
+  payload: ReportIncidentPayload,
+): Promise<TripIncidentRecord> {
+  const result = await request<TripIncidentRecord>(
+    `/api/v1/driver/trips/${tripId}/incidents`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify(payload),
+    },
+  );
+  return result.data;
+}
+
+export async function getDriverTripIncidents(
+  accessToken: string,
+  tripId: number,
+): Promise<TripIncidentRecord[]> {
+  const result = await request<TripIncidentRecord[]>(
+    `/api/v1/driver/trips/${tripId}/incidents`,
+    {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return result.data;
+}
+
 // ---- Error -----------------------------------------------------------------
 
 export class ApiError extends Error {

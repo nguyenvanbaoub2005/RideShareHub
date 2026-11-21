@@ -5,6 +5,7 @@ import { LoginPage } from './auth/LoginPage';
 import { RegisterPage } from './auth/RegisterPage';
 import { AdminCompanyListPage } from './admin/AdminCompanyListPage';
 import { AdminCompanyDetailPage } from './admin/AdminCompanyDetailPage';
+import { AdminMonitoringPage } from './admin/AdminMonitoringPage';
 import { CompanyProfilePage } from './company/CompanyProfilePage';
 import { VehicleListPage } from './company/VehicleListPage';
 import { VehicleFormPage } from './company/VehicleFormPage';
@@ -16,6 +17,7 @@ import { TripListPage } from './company/TripListPage';
 import { TripFormPage } from './company/TripFormPage';
 import { TripBookingOverviewPage } from './company/TripBookingOverviewPage';
 import { TripOptimizationPage } from './company/TripOptimizationPage';
+import { CompanyMonitoringPage } from './company/CompanyMonitoringPage';
 
 /** Redirects unauthenticated to /login */
 function RequireAdmin() {
@@ -53,6 +55,7 @@ export function App() {
         <Route element={<RequireAdmin />}>
           <Route path="/admin/companies" element={<AdminCompanyListPage />} />
           <Route path="/admin/companies/:companyId" element={<AdminCompanyDetailPage />} />
+          <Route path="/admin/monitoring" element={<AdminMonitoringPage />} />
         </Route>
 
         <Route element={<RequireCompany />}>
@@ -71,6 +74,7 @@ export function App() {
           <Route path="/company/trips/:tripId/edit" element={<TripFormPage />} />
           <Route path="/company/trips/:tripId/bookings" element={<TripBookingOverviewPage />} />
           <Route path="/company/trips/:tripId/optimize" element={<TripOptimizationPage />} />
+          <Route path="/company/monitoring" element={<CompanyMonitoringPage />} />
         </Route>
 
         <Route path="*" element={<DefaultRedirect />} />

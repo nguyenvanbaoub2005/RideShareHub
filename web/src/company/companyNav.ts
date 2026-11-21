@@ -1,6 +1,6 @@
 import type { NavLinkItem } from '../components/AppShell';
 
-export type CompanyNavSection = 'profile' | 'vehicles' | 'drivers' | 'routes' | 'trips';
+export type CompanyNavSection = 'profile' | 'vehicles' | 'drivers' | 'routes' | 'trips' | 'monitoring';
 
 export function buildCompanyNav(
   active: CompanyNavSection,
@@ -44,6 +44,14 @@ export function buildCompanyNav(
       label: 'Quản lý chuyến đi',
       icon: 'bus',
       active: active === 'trips',
+      disabled: !approved,
+    },
+    {
+      id: active === 'monitoring' ? 'nav-monitoring-active' : 'nav-monitoring',
+      to: '/company/monitoring',
+      label: 'Giám sát trực tiếp',
+      icon: 'pin',
+      active: active === 'monitoring',
       disabled: !approved,
     },
   ];

@@ -299,6 +299,15 @@ export function TripListPage() {
                         >
                           Tối ưu lộ trình
                         </Link>
+                        {t.status === 'IN_PROGRESS' && (
+                          <Link
+                            id={`monitor-trip-${t.id}`}
+                            className="btn btn--primary btn--sm"
+                            to={`/company/monitoring?tripId=${t.id}`}
+                          >
+                            Giám sát
+                          </Link>
+                        )}
                         {t.status === 'DRAFT' && (
                           <>
                             <button

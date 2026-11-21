@@ -146,4 +146,27 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
                 to != null ? to : Instant.parse("2100-01-01T00:00:00Z"),
                 pageable);
     }
+
+    // ------------------------------------------------------------------ SP4-P2-02: Monitoring queries
+
+    @Query("""
+            SELECT t FROM Trip t
+              JOIN FETCH t.route r
+              JOIN FETCH t.vehicle v
+              JOIN FETCH t.driver d
+              JOIN FETCH t.company c
+            ORDER BY t.departureTime DESC, t.id DESC
+            """)
+    List<Trip> findAllWithDetailsOrderByDepartureTimeDesc();
+
+    @Query("""
+            SELECT t FROM Trip t
+              JOIN FETCH t.route r
+              JOIN FETCH t.vehicle v
+              JOIN FETCH t.driver d
+              JOIN FETCH t.company c
+            WHERE c.id = :companyId
+            ORDER BY t.departureTime DESC, t.id DESC
+            """)
+    List<Trip> findAllByCompanyIdWithDetailsOrderByDepartureTimeDesc(@Param("companyId") Long companyId);
 }

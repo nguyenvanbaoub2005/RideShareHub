@@ -14,6 +14,24 @@ services:
       retries: 10
     volumes:
       - ridesharehub_postgres:/var/lib/postgresql/data
+
+  optimizer:
+    build: ../optimizer
+    ports:
+      - "${OPTIMIZER_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   backend:
     build: ../backend
     environment:
@@ -26,12 +44,29 @@ services:
       OPTIMIZER_BASE_URL: ${OPTIMIZER_BASE_URL:-http://optimizer:8000}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf http://127.0.0.1:8080/actuator/health || bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8080'",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
-  optimizer:
-    build: ../optimizer
+      optimizer:
+        condition: service_healthy
+
+  web:
+    build: ../web
     ports:
-      - "${OPTIMIZER_PORT:-8000}:8000"
+      - "${WEB_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
 volumes:
   ridesharehub_postgres:

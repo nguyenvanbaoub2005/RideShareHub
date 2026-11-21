@@ -16,24 +16,30 @@ import {
   Linking,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
   acceptDriverTrip,
   completeDriverTrip,
+  getDriverTripIncidents,
   getDriverTrips,
   getDriverTripStops,
   getTripBookings,
   rejectDriverTrip,
+  reportDriverTripIncident,
   sendDriverLocation,
   startDriverTrip,
   updateDriverStopStatus,
   type BookingRecord,
   type DriverTripSummary,
+  type TripIncidentRecord,
+  type TripIncidentType,
   type TripStopRecord,
 } from '../../../src/api/client';
 import { useAuth } from '../../../src/session/AuthContext';
@@ -81,6 +87,15 @@ function guessCoords(text: string, fallback: { lat: number; lng: number }) {
   return fallback;
 }
 
+const INCIDENT_CATEGORIES: { type: TripIncidentType; label: string; icon: string }[] = [
+  { type: 'VEHICLE_ISSUE', label: 'Sự cố phương tiện', icon: '🔧' },
+  { type: 'TRAFFIC_ACCIDENT', label: 'Tai nạn giao thông', icon: '⚠' },
+  { type: 'HEAVY_TRAFFIC', label: 'Kẹt xe kéo dài', icon: '🚦' },
+  { type: 'PASSENGER_NO_SHOW', label: 'Hành khách không có mặt', icon: '👤' },
+  { type: 'SAFETY_CONCERN', label: 'Vấn đề an toàn', icon: '🛡' },
+  { type: 'OTHER', label: 'Sự cố khác', icon: 'ℹ' },
+];
+
 export default function DriverTripDetailScreen() {
   const router = useRouter();
   const { session } = useAuth();
@@ -100,7 +115,9 @@ export default function DriverTripDetailScreen() {
   const [trip, setTrip] = useState<DriverTripSummary | null>(initialTrip);
   const [stops, setStops] = useState<TripStopRecord[]>([]);
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
+  const [incidents, setIncidents] = useState<TripIncidentRecord[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedbackBanner, setFeedbackBanner] = useState<{
     type: 'success' | 'error';
@@ -114,6 +131,14 @@ export default function DriverTripDetailScreen() {
   // Complete trip confirmation modal state
   const [confirmCompleteModal, setConfirmCompleteModal] = useState(false);
 
+  // SP4-P2-01 (Figma DR-09): Incident Report Modal state
+  const [incidentModalOpen, setIncidentModalOpen] = useState(false);
+  const [incidentType, setIncidentType] = useState<TripIncidentType | null>(null);
+  const [incidentDesc, setIncidentDesc] = useState('');
+  const [incidentTried, setIncidentTried] = useState(false);
+  const [incidentConfirmStep, setIncidentConfirmStep] = useState(false);
+  const [incidentSentSuccess, setIncidentSentSuccess] = useState<TripIncidentRecord | null>(null);
+
   // GPS simulation / periodic ingestion state while IN_PROGRESS
   const [autoGpsEnabled, setAutoGpsEnabled] = useState(true);
   const [lastGpsInfo, setLastGpsInfo] = useState<{
@@ -123,14 +148,16 @@ export default function DriverTripDetailScreen() {
   } | null>(null);
   const gpsStepRef = useRef(0);
 
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (isPull = false) => {
     if (!session?.accessToken || !numericTripId) return;
-    setLoadingData(true);
+    if (isPull) setRefreshing(true);
+    else setLoadingData(true);
     try {
-      const [driverTrips, stopList, bookingList] = await Promise.all([
+      const [driverTrips, stopList, bookingList, incidentList] = await Promise.all([
         getDriverTrips(session.accessToken).catch(() => [] as DriverTripSummary[]),
         getDriverTripStops(session.accessToken, numericTripId).catch(() => [] as TripStopRecord[]),
         getTripBookings(session.accessToken, numericTripId).catch(() => [] as BookingRecord[]),
+        getDriverTripIncidents(session.accessToken, numericTripId).catch(() => [] as TripIncidentRecord[]),
       ]);
       const latestTrip = driverTrips.find(t => t.id === numericTripId);
       if (latestTrip) {
@@ -138,10 +165,45 @@ export default function DriverTripDetailScreen() {
       }
       setStops(stopList);
       setBookings(bookingList);
+      setIncidents(incidentList);
     } finally {
-      setLoadingData(false);
+      if (isPull) setRefreshing(false);
+      else setLoadingData(false);
     }
   }, [session?.accessToken, numericTripId]);
+
+  function openIncidentModal() {
+    setIncidentType(null);
+    setIncidentDesc('');
+    setIncidentTried(false);
+    setIncidentConfirmStep(false);
+    setIncidentSentSuccess(null);
+    setIncidentModalOpen(true);
+  }
+
+  async function handleSubmitIncident() {
+    if (!session?.accessToken || !numericTripId || !incidentType) return;
+    setActionLoading('INCIDENT');
+    try {
+      const created = await reportDriverTripIncident(session.accessToken, numericTripId, {
+        incidentType,
+        description: incidentDesc.trim(),
+        latitude: lastGpsInfo?.lat ?? null,
+        longitude: lastGpsInfo?.lng ?? null,
+      });
+      setIncidentConfirmStep(false);
+      setIncidentSentSuccess(created);
+      await loadAll();
+    } catch (err: unknown) {
+      setIncidentConfirmStep(false);
+      setFeedbackBanner({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Không thể gửi báo cáo sự cố',
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  }
 
   useEffect(() => {
     loadAll();
@@ -409,7 +471,16 @@ export default function DriverTripDetailScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void loadAll(true)}
+            tintColor={COLORS.primary}
+          />
+        }
+      >
         {/* Feedback banner */}
         {feedbackBanner ? (
           <View
@@ -596,6 +667,127 @@ export default function DriverTripDetailScreen() {
                   * Hoàn tất tất cả {stops.length} điểm đón/trả bên dưới để kết thúc chuyến đi.
                 </Text>
               ) : null}
+
+              {/* SP4-P2-01 (Figma DR-09): Driver Incident Reporting CTA */}
+              <Pressable
+                style={{
+                  marginTop: 10,
+                  borderRadius: 12,
+                  borderWidth: 1.5,
+                  borderColor: COLORS.rose,
+                  backgroundColor: '#FFF1F2',
+                  paddingVertical: 11,
+                  alignItems: 'center',
+                }}
+                onPress={openIncidentModal}
+                accessibilityRole="button"
+                accessibilityLabel="Báo cáo sự cố"
+              >
+                <Text style={{ color: COLORS.rose, fontSize: 13, fontWeight: '800' }}>
+                  ⚠ Báo sự cố phát sinh ({incidents.length})
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        {/* SP4-P2-05 (Figma DR-10): Trip Completed Summary Card */}
+        {trip.status === 'COMPLETED' ? (
+          <View
+            style={[
+              styles.card,
+              {
+                borderColor: '#86EFAC',
+                borderWidth: 1.5,
+                backgroundColor: '#F0FDF4',
+                alignItems: 'center',
+              },
+            ]}
+          >
+            <View
+              style={{
+                width: 54,
+                height: 54,
+                borderRadius: 27,
+                backgroundColor: COLORS.emerald,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 10,
+              }}
+            >
+              <CheckGlyph size={26} color="#ffffff" />
+            </View>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: COLORS.slate900 }}>
+              Chuyến đã hoàn thành (DR-10)
+            </Text>
+            <Text style={{ fontSize: 13, color: COLORS.slate600, marginTop: 4, textAlign: 'center' }}>
+              Đã xử lý {completedStopsCount}/{stops.length} điểm dừng · Sự cố đã báo:{' '}
+              {incidents.length}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, width: '100%' }}>
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: '#DCFCE7',
+                  borderRadius: 10,
+                  paddingVertical: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#166534' }}>
+                  Đã đón {stops.filter(s => s.stopType === 'PICKUP' && s.status === 'COMPLETED').length}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: '#FEE2E2',
+                  borderRadius: 10,
+                  paddingVertical: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#991B1B' }}>
+                  Đã trả {stops.filter(s => s.stopType === 'DROPOFF' && s.status === 'COMPLETED').length}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Reported Incidents List on Trip (when any) */}
+        {incidents.length > 0 ? (
+          <View style={styles.card}>
+            <Text style={styles.cardSection}>BÁO CÁO SỰ CỐ ĐÃ GỬI ({incidents.length})</Text>
+            <View style={{ marginTop: 10, gap: 8 }}>
+              {incidents.map(inc => (
+                <View
+                  key={inc.id}
+                  style={{
+                    borderRadius: 12,
+                    padding: 11,
+                    borderWidth: 1,
+                    borderColor: inc.status === 'RESOLVED' ? '#BBF7D0' : '#FECACA',
+                    backgroundColor: inc.status === 'RESOLVED' ? '#F0FDF4' : '#FEF2F2',
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: COLORS.slate900 }}>
+                      {inc.incidentTypeLabel}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '800',
+                        color: inc.status === 'RESOLVED' ? '#15803D' : '#B91C1C',
+                      }}
+                    >
+                      {inc.status === 'RESOLVED' ? '✓ Đã xử lý' : '● Đang mở'}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 12, color: COLORS.slate700 }}>{inc.description}</Text>
+                </View>
+              ))}
             </View>
           </View>
         ) : null}
@@ -606,7 +798,7 @@ export default function DriverTripDetailScreen() {
             <Text style={styles.cardSection}>
               LỘ TRÌNH ĐÓN / TRẢ HÀNH KHÁCH ({stops.length} ĐIỂM DỪNG)
             </Text>
-            <Pressable onPress={loadAll} accessibilityRole="button">
+            <Pressable onPress={() => void loadAll(false)} accessibilityRole="button">
               <Text style={styles.refreshLink}>Làm mới ↻</Text>
             </Pressable>
           </View>
@@ -926,6 +1118,223 @@ export default function DriverTripDetailScreen() {
               </Pressable>
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* SP4-P2-01 (Figma DR-09): Driver Incident Report Modal */}
+      <Modal
+        visible={incidentModalOpen}
+        animationType="slide"
+        onRequestClose={() => setIncidentModalOpen(false)}
+      >
+        <View style={styles.root}>
+          <StatusBar style="light" />
+          <View style={styles.hero}>
+            <View style={styles.heroBar}>
+              <Pressable
+                onPress={() => setIncidentModalOpen(false)}
+                style={styles.backBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Đóng báo sự cố"
+              >
+                <BackGlyph size={18} color="#ffffff" />
+              </Pressable>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.heroLabel}>MÀN HÌNH DR-09</Text>
+                <Text style={styles.heroTitle} numberOfLines={1}>
+                  Báo sự cố · {trip.origin} → {trip.destination}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {incidentSentSuccess ? (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 28 }}>
+              <View
+                style={{
+                  width: 84,
+                  height: 84,
+                  borderRadius: 42,
+                  backgroundColor: '#DCFCE7',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: 18,
+                }}
+              >
+                <CheckGlyph size={40} color={COLORS.emerald} />
+              </View>
+              <Text style={{ fontSize: 22, fontWeight: '800', color: COLORS.slate900 }}>
+                Đã gửi báo cáo
+              </Text>
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: COLORS.slate600,
+                  textAlign: 'center',
+                  marginTop: 8,
+                  lineHeight: 20,
+                }}
+              >
+                Nhà xe đã nhận báo cáo &ldquo;{incidentSentSuccess.incidentTypeLabel}&rdquo;. Bộ phận điều hành sẽ liên hệ hỗ trợ bạn sớm.
+              </Text>
+              <Pressable
+                style={[
+                  styles.startTripBtn,
+                  { width: '100%', marginTop: 24, backgroundColor: COLORS.primary },
+                ]}
+                onPress={() => setIncidentModalOpen(false)}
+                accessibilityRole="button"
+              >
+                <Text style={styles.startTripBtnText}>Quay lại chuyến đi</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 32 }}>
+              <View style={styles.card}>
+                <Text style={[styles.cardSection, { marginBottom: 12 }]}>LOẠI SỰ CỐ *</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                  {INCIDENT_CATEGORIES.map(cat => {
+                    const selectedCat = incidentType === cat.type;
+                    return (
+                      <Pressable
+                        key={cat.type}
+                        style={{
+                          width: '48%',
+                          borderRadius: 16,
+                          borderWidth: 2,
+                          borderColor: selectedCat ? COLORS.primary : COLORS.slate200,
+                          backgroundColor: selectedCat ? '#EEF2FF' : '#ffffff',
+                          padding: 14,
+                          minHeight: 84,
+                          justifyContent: 'space-between',
+                        }}
+                        onPress={() => setIncidentType(cat.type)}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ fontSize: 20 }}>{cat.icon}</Text>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: '800',
+                            color: selectedCat ? COLORS.primary : COLORS.slate900,
+                            marginTop: 6,
+                          }}
+                        >
+                          {cat.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                {incidentTried && !incidentType ? (
+                  <Text style={{ color: COLORS.rose, fontSize: 12, fontWeight: '700', marginTop: 8 }}>
+                    Vui lòng chọn loại sự cố
+                  </Text>
+                ) : null}
+              </View>
+
+              <View style={styles.card}>
+                <Text style={[styles.cardSection, { marginBottom: 10 }]}>MÔ TẢ CHI TIẾT *</Text>
+                <TextInput
+                  multiline
+                  maxLength={500}
+                  value={incidentDesc}
+                  onChangeText={setIncidentDesc}
+                  placeholder="Mô tả ngắn gọn điều gì đã xảy ra, vị trí hiện tại và hành khách bị ảnh hưởng..."
+                  placeholderTextColor={COLORS.slate400}
+                  style={{
+                    borderWidth: 2,
+                    borderColor:
+                      incidentTried && incidentDesc.trim().length < 10
+                        ? COLORS.rose
+                        : COLORS.slate200,
+                    borderRadius: 14,
+                    padding: 12,
+                    minHeight: 110,
+                    textAlignVertical: 'top',
+                    fontSize: 14,
+                    color: COLORS.slate900,
+                  }}
+                />
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    marginTop: 6,
+                  }}
+                >
+                  <Text style={{ color: COLORS.rose, fontSize: 12, fontWeight: '600' }}>
+                    {incidentTried && incidentDesc.trim().length < 10
+                      ? 'Vui lòng mô tả ít nhất 10 ký tự'
+                      : ''}
+                  </Text>
+                  <Text style={{ color: COLORS.slate400, fontSize: 12 }}>
+                    {incidentDesc.length}/500
+                  </Text>
+                </View>
+              </View>
+
+              <Pressable
+                style={{
+                  backgroundColor: COLORS.rose,
+                  paddingVertical: 15,
+                  borderRadius: 14,
+                  alignItems: 'center',
+                }}
+                onPress={() => {
+                  setIncidentTried(true);
+                  if (incidentType && incidentDesc.trim().length >= 10) {
+                    setIncidentConfirmStep(true);
+                  }
+                }}
+                accessibilityRole="button"
+              >
+                <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '800' }}>
+                  ⚠ Gửi báo cáo sự cố
+                </Text>
+              </Pressable>
+            </ScrollView>
+          )}
+
+          {/* Confirm Incident Submission Dialog */}
+          <Modal
+            visible={incidentConfirmStep}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setIncidentConfirmStep(false)}
+          >
+            <View style={styles.modalBackdrop}>
+              <View style={styles.modalCard}>
+                <Text style={styles.modalTitle}>Gửi báo cáo sự cố?</Text>
+                <Text style={styles.modalDesc}>
+                  Loại: {INCIDENT_CATEGORIES.find(c => c.type === incidentType)?.label}. Báo cáo sẽ
+                  được gửi đến nhà xe và quản trị viên ngay lập tức.
+                </Text>
+                <View style={styles.modalActions}>
+                  <Pressable
+                    style={styles.modalCancelBtn}
+                    disabled={actionLoading != null}
+                    onPress={() => setIncidentConfirmStep(false)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.modalCancelText}>Quay lại</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.modalConfirmBtn, { backgroundColor: COLORS.rose }]}
+                    disabled={actionLoading != null}
+                    onPress={handleSubmitIncident}
+                    accessibilityRole="button"
+                  >
+                    {actionLoading === 'INCIDENT' ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={styles.modalConfirmText}>Gửi báo cáo</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
         </View>
       </Modal>
     </View>
