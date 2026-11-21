@@ -11,8 +11,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Linking,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -88,6 +90,8 @@ function describeEventBadge(eventType?: string): string | null {
       return '✓ Tài xế đã xác nhận trả khách tại điểm đến';
     case 'TRIP_COMPLETED':
       return '🎉 Chuyến đi đã hoàn thành an toàn';
+    case 'INCIDENT_REPORTED':
+      return '⚠ Tài xế vừa gửi báo cáo sự cố trên chuyến đi';
     default:
       return null;
   }
@@ -105,15 +109,21 @@ export default function PassengerLiveTrackingScreen() {
   const [wsState, setWsState] = useState<'CONNECTING' | 'CONNECTED' | 'RECONNECTING'>('CONNECTING');
   const [liveToast, setLiveToast] = useState<string | null>(null);
   const [clientStaleTick, setClientStaleTick] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptRef = useRef(0);
   const unmountedRef = useRef(false);
 
   const fetchRestSnapshot = useCallback(
-    async (silent = false) => {
+    async (silent = false, isPullRefresh = false) => {
       if (!session?.accessToken || !numericTripId) return;
-      if (!silent) setLoading(true);
+      if (isPullRefresh) {
+        setRefreshing(true);
+      } else if (!silent) {
+        setLoading(true);
+      }
       try {
         const data = await getTripLiveSnapshot(session.accessToken, numericTripId);
         if (!unmountedRef.current) {
@@ -127,20 +137,22 @@ export default function PassengerLiveTrackingScreen() {
           );
         }
       } finally {
-        if (!unmountedRef.current && !silent) {
-          setLoading(false);
+        if (!unmountedRef.current) {
+          if (isPullRefresh) setRefreshing(false);
+          else if (!silent) setLoading(false);
         }
       }
     },
     [session?.accessToken, numericTripId],
   );
 
-  // Connect WebSocket with automatic reconnect & authoritative REST resync (ADR-003)
+  // Connect WebSocket with capped exponential backoff & AppState foreground/background recovery (SP4-P2-05)
   const connectWebSocket = useCallback(() => {
     if (!session?.accessToken || !numericTripId || unmountedRef.current) return;
 
     if (wsRef.current) {
       try {
+        wsRef.current.onclose = null;
         wsRef.current.close();
       } catch {
         // ignore
@@ -157,6 +169,7 @@ export default function PassengerLiveTrackingScreen() {
 
       ws.onopen = () => {
         if (unmountedRef.current) return;
+        reconnectAttemptRef.current = 0;
         setWsState('CONNECTED');
         // ADR-003: Fetch authoritative REST snapshot upon connection/reconnection
         fetchRestSnapshot(true);
@@ -174,23 +187,23 @@ export default function PassengerLiveTrackingScreen() {
               setSnapshot(prev =>
                 prev
                   ? {
-                      ...prev,
-                      eventType: payload.eventType,
-                      tripStatus: payload.tripStatus,
-                      currentLat: payload.currentLat ?? prev.currentLat,
-                      currentLng: payload.currentLng ?? prev.currentLng,
-                      heading: payload.heading ?? prev.heading,
-                      speedKmh: payload.speedKmh ?? prev.speedKmh,
-                      locationUpdatedAt: payload.locationUpdatedAt ?? prev.locationUpdatedAt,
-                      locationStale: payload.locationStale,
-                      completedStopsCount: payload.completedStopsCount,
-                      totalStopsCount: payload.totalStopsCount,
-                      recentEvents: payload.recentEvents?.length
-                        ? payload.recentEvents
-                        : prev.recentEvents,
-                      routeOptimized: payload.routeOptimized ?? prev.routeOptimized,
-                      acceptedProposalId: payload.acceptedProposalId ?? prev.acceptedProposalId,
-                    }
+                    ...prev,
+                    eventType: payload.eventType,
+                    tripStatus: payload.tripStatus,
+                    currentLat: payload.currentLat ?? prev.currentLat,
+                    currentLng: payload.currentLng ?? prev.currentLng,
+                    heading: payload.heading ?? prev.heading,
+                    speedKmh: payload.speedKmh ?? prev.speedKmh,
+                    locationUpdatedAt: payload.locationUpdatedAt ?? prev.locationUpdatedAt,
+                    locationStale: payload.locationStale,
+                    completedStopsCount: payload.completedStopsCount,
+                    totalStopsCount: payload.totalStopsCount,
+                    recentEvents: payload.recentEvents?.length
+                      ? payload.recentEvents
+                      : prev.recentEvents,
+                    routeOptimized: payload.routeOptimized ?? prev.routeOptimized,
+                    acceptedProposalId: payload.acceptedProposalId ?? prev.acceptedProposalId,
+                  }
                   : payload,
               );
               // Re-sync personalized stops & personal ETA when route/stops change
@@ -218,12 +231,15 @@ export default function PassengerLiveTrackingScreen() {
         if (unmountedRef.current) return;
         setWsState('RECONNECTING');
         if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+        const attempt = reconnectAttemptRef.current;
+        reconnectAttemptRef.current = Math.min(attempt + 1, 4);
+        const delayMs = Math.min(15000, 2000 * Math.pow(2, attempt));
         reconnectTimerRef.current = setTimeout(() => {
           if (!unmountedRef.current) {
             fetchRestSnapshot(true);
             connectWebSocket();
           }
-        }, 4000);
+        }, delayMs);
       };
     } catch {
       setWsState('RECONNECTING');
@@ -235,6 +251,27 @@ export default function PassengerLiveTrackingScreen() {
     fetchRestSnapshot(false);
     connectWebSocket();
 
+    // Pause WebSocket cleanly on background & resync snapshot + reconnect on foreground (SP4-P2-05)
+    const appStateSub = AppState.addEventListener('change', nextState => {
+      if (unmountedRef.current) return;
+      if (nextState === 'background' || nextState === 'inactive') {
+        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+        if (wsRef.current) {
+          try {
+            wsRef.current.onclose = null;
+            wsRef.current.close();
+          } catch {
+            // ignore
+          }
+          wsRef.current = null;
+        }
+      } else if (nextState === 'active') {
+        reconnectAttemptRef.current = 0;
+        fetchRestSnapshot(true);
+        connectWebSocket();
+      }
+    });
+
     // Periodic fallback sync & client-side stale timer every 8s
     const interval = setInterval(() => {
       setClientStaleTick(t => t + 1);
@@ -243,10 +280,12 @@ export default function PassengerLiveTrackingScreen() {
 
     return () => {
       unmountedRef.current = true;
+      appStateSub.remove();
       clearInterval(interval);
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       if (wsRef.current) {
         try {
+          wsRef.current.onclose = null;
           wsRef.current.close();
         } catch {
           // ignore
@@ -301,9 +340,9 @@ export default function PassengerLiveTrackingScreen() {
     const vehicleCoord =
       snapshot?.currentLat != null && snapshot?.currentLng != null
         ? {
-            latitude: Number(snapshot.currentLat),
-            longitude: Number(snapshot.currentLng),
-          }
+          latitude: Number(snapshot.currentLat),
+          longitude: Number(snapshot.currentLng),
+        }
         : stopCoords[0]
           ? { latitude: stopCoords[0].latitude, longitude: stopCoords[0].longitude }
           : { latitude: originCoord.lat, longitude: originCoord.lng };
@@ -408,7 +447,19 @@ export default function PassengerLiveTrackingScreen() {
           </Pressable>
         </View>
       ) : snapshot ? (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                void fetchRestSnapshot(false, true);
+                if (wsState !== 'CONNECTED') connectWebSocket();
+              }}
+              tintColor={COLORS.primary}
+            />
+          }
+        >
           {/* Live Event Notification Toast (PA-14) */}
           {liveToast ? (
             <Pressable

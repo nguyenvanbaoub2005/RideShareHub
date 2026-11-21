@@ -391,6 +391,11 @@ public class TripExecutionService {
         broadcastSnapshot(trip, "ROUTE_PROPOSAL_ACCEPTED");
     }
 
+    /** Called by TripIncidentService when a driver reports an operational incident. */
+    public void broadcastIncidentReported(Trip trip) {
+        broadcastSnapshot(trip, "INCIDENT_REPORTED");
+    }
+
     /** Used by WebSocket handshake/connection handler to authorize subscription. */
     @Transactional(readOnly = true)
     public boolean canObserveTrip(Long tripId, AuthPrincipal principal) {

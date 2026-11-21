@@ -544,3 +544,130 @@ export const optimizationApi = {
       body: JSON.stringify({ reason: reason ?? null }),
     }),
 };
+
+// ------------------------------------------------------------------ SP4-P2-01/02: Monitoring & Incidents
+export type TripIncidentType =
+  | 'VEHICLE_ISSUE'
+  | 'TRAFFIC_ACCIDENT'
+  | 'HEAVY_TRAFFIC'
+  | 'PASSENGER_NO_SHOW'
+  | 'SAFETY_CONCERN'
+  | 'OTHER';
+
+export type TripIncidentStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
+
+export interface TripIncidentResponse {
+  id: number;
+  tripId: number;
+  routeName: string;
+  origin: string;
+  destination: string;
+  companyId: number;
+  companyName: string;
+  vehiclePlate: string;
+  driverId: number;
+  driverName: string;
+  driverPhone?: string | null;
+  incidentType: TripIncidentType;
+  incidentTypeLabel: string;
+  description: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  status: TripIncidentStatus;
+  resolutionNote?: string | null;
+  resolvedByUserId?: number | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+}
+
+export interface TripMonitoringSummary {
+  tripId: number;
+  routeName: string;
+  origin: string;
+  destination: string;
+  companyId: number;
+  companyName: string;
+  driverName: string;
+  driverPhone?: string | null;
+  vehiclePlate: string;
+  vehicleType: string;
+  departureTime: string;
+  estimatedMinutes: number;
+  status: TripResponse['status'];
+  assignmentStatus: 'ASSIGNED' | 'ACCEPTED' | 'REJECTED';
+  bookedSeats: number;
+  seatCapacity: number;
+  currentLat?: number | null;
+  currentLng?: number | null;
+  speedKmh?: number | null;
+  locationUpdatedAt?: string | null;
+  locationStale: boolean;
+  completedStopsCount: number;
+  totalStopsCount: number;
+  nextStopAddress?: string | null;
+  nextStopType?: TripStopType | null;
+  openIncidentsCount: number;
+  totalIncidentsCount: number;
+}
+
+export interface TripLiveSnapshotResponse {
+  eventType: string;
+  tripId: number;
+  routeName: string;
+  origin: string;
+  destination: string;
+  departureTime: string;
+  estimatedMinutes: number;
+  tripStatus: TripResponse['status'];
+  assignmentStatus: 'ASSIGNED' | 'ACCEPTED' | 'REJECTED';
+  companyName: string;
+  vehiclePlate: string;
+  vehicleType: string;
+  driverName: string;
+  driverPhone?: string | null;
+  currentLat?: number | null;
+  currentLng?: number | null;
+  heading?: number | null;
+  speedKmh?: number | null;
+  locationUpdatedAt?: string | null;
+  locationStale: boolean;
+  nextStop?: TripStopResponse | null;
+  etaMinutesToNextStop?: number | null;
+  completedStopsCount: number;
+  totalStopsCount: number;
+  stops: TripStopResponse[];
+  recentEvents: string[];
+  serverTimestamp: string;
+  acceptedProposalId?: number | null;
+  routeOptimized?: boolean;
+}
+
+export const monitoringApi = {
+  listCompanyMonitoringTrips: (companyId: number) =>
+    request<TripMonitoringSummary[]>(`/api/v1/companies/${companyId}/monitoring/trips`),
+
+  listAdminMonitoringTrips: () =>
+    request<TripMonitoringSummary[]>('/api/v1/admin/monitoring/trips'),
+
+  getTripLiveSnapshot: (tripId: number) =>
+    request<TripLiveSnapshotResponse>(`/api/v1/trips/${tripId}/live-snapshot`),
+
+  listCompanyIncidents: (companyId: number, status?: TripIncidentStatus) =>
+    request<TripIncidentResponse[]>(
+      `/api/v1/companies/${companyId}/incidents${status ? `?status=${status}` : ''}`,
+    ),
+
+  listTripIncidents: (tripId: number) =>
+    request<TripIncidentResponse[]>(`/api/v1/trips/${tripId}/incidents`),
+
+  listAdminIncidents: (status?: TripIncidentStatus) =>
+    request<TripIncidentResponse[]>(
+      `/api/v1/admin/incidents${status ? `?status=${status}` : ''}`,
+    ),
+
+  resolveIncident: (tripId: number, incidentId: number, resolutionNote?: string) =>
+    request<TripIncidentResponse>(`/api/v1/trips/${tripId}/incidents/${incidentId}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ resolutionNote: resolutionNote ?? null }),
+    }),
+};

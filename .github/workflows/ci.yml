@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [dev]
+    branches: [dev, main]
   pull_request:
-    branches: [dev]
+    branches: [dev, main]
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -23,7 +23,7 @@ jobs:
       - run: npm ci
       # Vite 8 (rolldown) + TypeScript 7 need platform-specific native binaries.
       # Declared as optionalDependencies so npm ci installs the linux-x64 variants here.
-      - run: npm test
+      - run: npm test -- --run
       - run: npm run build
   mobile:
     runs-on: ubuntu-latest

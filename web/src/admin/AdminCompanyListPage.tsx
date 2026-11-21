@@ -49,6 +49,13 @@ export function AdminCompanyListPage() {
       active: true,
       badge: counts.PENDING,
     },
+    {
+      id: 'nav-admin-monitoring',
+      to: '/admin/monitoring',
+      label: 'Giám sát vận hành',
+      icon: 'route',
+      active: false,
+    },
   ];
 
   const topbarStatus = (

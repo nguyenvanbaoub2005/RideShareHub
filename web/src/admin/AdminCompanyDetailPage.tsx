@@ -90,6 +90,13 @@ export function AdminCompanyDetailPage() {
       active: true,
       badge: pendingCount,
     },
+    {
+      id: 'nav-admin-monitoring',
+      to: '/admin/monitoring',
+      label: 'Giám sát vận hành',
+      icon: 'route',
+      active: false,
+    },
   ];
 
   const topbarStatus = pendingCount > 0 ? (
