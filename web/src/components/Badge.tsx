@@ -20,6 +20,12 @@ const LABELS: Record<string, string> = {
   CONFIRMED: 'Đã xác nhận',
   PICKED_UP: 'Đã lên xe',
   NO_SHOW: 'Vắng mặt',
+  ACTIVE: 'Đang hoạt động',
+  LOCKED: 'Đã khóa',
+  PASSENGER: 'Hành khách',
+  DRIVER: 'Tài xế',
+  TRANSPORT_COMPANY: 'Nhà xe',
+  ADMIN: 'Quản trị viên',
 };
 
 const VARIANT_MAP: Record<string, BadgeVariant> = {
@@ -40,6 +46,12 @@ const VARIANT_MAP: Record<string, BadgeVariant> = {
   CONFIRMED: 'approved',
   PICKED_UP: 'in-use',
   NO_SHOW: 'inactive',
+  ACTIVE: 'approved',
+  LOCKED: 'rejected',
+  PASSENGER: 'in-use',
+  DRIVER: 'available',
+  TRANSPORT_COMPANY: 'pending',
+  ADMIN: 'neutral',
 };
 
 interface BadgeProps {

@@ -14,12 +14,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import {
   ApiError,
   type BookingRecord,
   cancelBooking,
+  createBookingRating,
   generateIdempotencyKey,
   getMyBookings,
 } from '../../src/api/client';
@@ -29,11 +31,13 @@ import {
   BusGlyph,
   CarGlyph,
   Card,
+  CheckGlyph,
   KeyValueRow,
   PassengerTabBar,
   PhoneGlyph,
   PinGlyph,
   SectionHeading,
+  StarGlyph,
   StatusBadge,
   TicketGlyph,
 } from '../../src/components/UI';
@@ -60,6 +64,8 @@ function groupOf(status: BookingRecord['status']): TabGroup {
   return 'UPCOMING';
 }
 
+const STAR_LABELS = ['', 'Rất tệ', 'Chưa tốt', 'Bình thường', 'Tốt', 'Tuyệt vời'];
+
 export default function PassengerBookingsScreen() {
   const { session } = useAuth();
   const router = useRouter();
@@ -73,6 +79,79 @@ export default function PassengerBookingsScreen() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // SP4-P1-03: Figma PA-15 Rating Modal state
+  const [ratingTarget, setRatingTarget] = useState<BookingRecord | null>(null);
+  const [tripScore, setTripScore] = useState(0);
+  const [driverScore, setDriverScore] = useState(0);
+  const [companyScore, setCompanyScore] = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
+  const [ratingTried, setRatingTried] = useState(false);
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
+  const [ratingDone, setRatingDone] = useState(false);
+  const [ratingError, setRatingError] = useState<string | null>(null);
+
+  function openRatingModal(booking: BookingRecord) {
+    if (booking.status !== 'COMPLETED' || booking.rated) return;
+    setRatingTarget(booking);
+    setTripScore(0);
+    setDriverScore(0);
+    setCompanyScore(0);
+    setRatingComment('');
+    setRatingTried(false);
+    setRatingSubmitting(false);
+    setRatingDone(false);
+    setRatingError(null);
+  }
+
+  function closeRatingModal() {
+    setRatingTarget(null);
+    setRatingTried(false);
+    setRatingSubmitting(false);
+    setRatingDone(false);
+    setRatingError(null);
+  }
+
+  async function handleSubmitRating() {
+    if (!session?.accessToken || !ratingTarget) return;
+    setRatingTried(true);
+    setRatingError(null);
+    if (!tripScore || !driverScore || !companyScore) {
+      setRatingError('Vui lòng chọn đầy đủ số sao (1–5) cho chuyến đi, tài xế và nhà xe.');
+      return;
+    }
+    if (ratingTarget.status !== 'COMPLETED' || ratingTarget.rated) {
+      return;
+    }
+    setRatingSubmitting(true);
+    try {
+      const saved = await createBookingRating(session.accessToken, ratingTarget.id, {
+        tripScore,
+        driverScore,
+        companyScore,
+        comment: ratingComment.trim() || null,
+      });
+      setBookings(prev =>
+        prev.map(b =>
+          b.id === ratingTarget.id ? { ...b, rated: true, ratingScore: saved.score } : b,
+        ),
+      );
+      setSelected(prev =>
+        prev && prev.id === ratingTarget.id
+          ? { ...prev, rated: true, ratingScore: saved.score }
+          : prev,
+      );
+      setRatingDone(true);
+    } catch (err: unknown) {
+      setRatingError(
+        err instanceof ApiError
+          ? err.message
+          : 'Không thể gửi đánh giá lúc này. Vui lòng thử lại.',
+      );
+    } finally {
+      setRatingSubmitting(false);
+    }
+  }
 
   const loadBookings = useCallback(
     async (isRefresh = false) => {
@@ -192,7 +271,26 @@ export default function PassengerBookingsScreen() {
           <Text style={styles.fareText}>{formatVND(item.fareEstimate)}</Text>
         </View>
 
-        {item.status !== 'CANCELLED' && item.status !== 'NO_SHOW' ? (
+        {item.status === 'COMPLETED' ? (
+          item.rated ? (
+            <View style={styles.ratedBadgeRow}>
+              <StarGlyph size={15} color={COLORS.warning} filled />
+              <Text style={styles.ratedBadgeText}>
+                Đã đánh giá ★ {item.ratingScore ?? 5}/5
+              </Text>
+            </View>
+          ) : (
+            <Pressable
+              style={styles.rateCtaBtn}
+              onPress={() => openRatingModal(item)}
+              accessibilityRole="button"
+              accessibilityLabel={`Đánh giá chuyến đi ${item.bookingCode}`}
+            >
+              <StarGlyph size={16} color={COLORS.warningText} filled />
+              <Text style={styles.rateCtaText}>Đánh giá chuyến đi (PA-15) →</Text>
+            </Pressable>
+          )
+        ) : item.status !== 'CANCELLED' && item.status !== 'NO_SHOW' ? (
           <Pressable
             style={{
               marginTop: 10,
@@ -343,7 +441,9 @@ export default function PassengerBookingsScreen() {
                 <Text style={styles.navyTicketCode}>{selected.bookingCode}</Text>
               </View>
 
-              {selected.status !== 'CANCELLED' && selected.status !== 'NO_SHOW' ? (
+              {selected.status !== 'COMPLETED' &&
+              selected.status !== 'CANCELLED' &&
+              selected.status !== 'NO_SHOW' ? (
                 <Pressable
                   style={{
                     backgroundColor: COLORS.primary,
@@ -526,7 +626,28 @@ export default function PassengerBookingsScreen() {
               ) : null}
             </ScrollView>
 
-            {canCancelSelected && !isWithinCancelCutoff ? (
+            {selected.status === 'COMPLETED' ? (
+              <View style={styles.detailFooter}>
+                {selected.rated ? (
+                  <View style={styles.detailRatedBanner}>
+                    <StarGlyph size={18} color={COLORS.warning} filled />
+                    <Text style={styles.detailRatedText}>
+                      Bạn đã đánh giá chuyến này (★ {selected.ratingScore ?? 5}/5)
+                    </Text>
+                  </View>
+                ) : (
+                  <Pressable
+                    style={styles.rateFullBtn}
+                    onPress={() => openRatingModal(selected)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Đánh giá chuyến ${selected.bookingCode}`}
+                  >
+                    <StarGlyph size={18} color="#ffffff" filled />
+                    <Text style={styles.rateFullBtnText}>Đánh giá chuyến đi</Text>
+                  </Pressable>
+                )}
+              </View>
+            ) : canCancelSelected && !isWithinCancelCutoff ? (
               <View style={styles.detailFooter}>
                 {confirmCancel ? (
                   <View style={styles.confirmBox}>
@@ -566,6 +687,145 @@ export default function PassengerBookingsScreen() {
                 )}
               </View>
             ) : null}
+          </View>
+        ) : null}
+      </Modal>
+
+      {/* SP4-P1-03: Figma PA-15 Passenger Rating Modal */}
+      <Modal
+        visible={!!ratingTarget}
+        animationType="slide"
+        onRequestClose={closeRatingModal}
+      >
+        {ratingTarget ? (
+          <View style={styles.root}>
+            {ratingDone ? (
+              <>
+                <View style={styles.ratingDoneCenter}>
+                  <View style={styles.ratingSuccessOuter}>
+                    <View style={styles.ratingSuccessInner}>
+                      <CheckGlyph size={34} color="#ffffff" />
+                    </View>
+                  </View>
+                  <Text style={styles.ratingDoneTitle}>Cảm ơn bạn đã đánh giá!</Text>
+                  <Text style={styles.ratingDoneSub}>
+                    Phản hồi của bạn giúp {ratingTarget.companyName} và cộng đồng RideShareHub cải
+                    thiện chất lượng chuyến đi.
+                  </Text>
+                </View>
+                <View style={styles.detailFooter}>
+                  <Pressable
+                    style={styles.rateFullBtn}
+                    onPress={closeRatingModal}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.rateFullBtnText}>Về chuyến của tôi</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <AppBar
+                  title="Đánh giá chuyến đi"
+                  sub={`${ratingTarget.origin} → ${ratingTarget.destination} · ${formatDateShort(ratingTarget.departureTime)}`}
+                  onBack={closeRatingModal}
+                />
+                <ScrollView contentContainerStyle={styles.detailScroll}>
+                  {(
+                    [
+                      ['Chuyến đi', 'Trải nghiệm chung', tripScore, setTripScore],
+                      ['Tài xế', ratingTarget.driverName, driverScore, setDriverScore],
+                      ['Nhà xe', ratingTarget.companyName, companyScore, setCompanyScore],
+                    ] as const
+                  ).map(([title, subtitle, value, setter]) => (
+                    <Card key={title}>
+                      <Text style={styles.ratingCardTitle}>{title}</Text>
+                      <Text style={styles.ratingCardSub}>{subtitle}</Text>
+                      <View style={styles.starRow}>
+                        {[1, 2, 3, 4, 5].map(star => (
+                          <Pressable
+                            key={star}
+                            onPress={() => setter(star)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${title}: ${star} sao`}
+                            style={styles.starHit}
+                          >
+                            <StarGlyph
+                              size={32}
+                              color={star <= value ? COLORS.warning : COLORS.slate300}
+                              filled={star <= value}
+                            />
+                          </Pressable>
+                        ))}
+                      </View>
+                      <Text
+                        style={[
+                          styles.ratingHint,
+                          value
+                            ? styles.ratingHintSelected
+                            : ratingTried
+                              ? styles.ratingHintError
+                              : null,
+                        ]}
+                      >
+                        {value
+                          ? STAR_LABELS[value]
+                          : ratingTried
+                            ? 'Vui lòng chọn số sao'
+                            : 'Chạm để đánh giá'}
+                      </Text>
+                    </Card>
+                  ))}
+
+                  <Card>
+                    <Text style={styles.commentLabel}>
+                      Nhận xét <Text style={styles.commentOpt}>(không bắt buộc)</Text>
+                    </Text>
+                    <TextInput
+                      style={styles.commentInput}
+                      multiline
+                      maxLength={300}
+                      value={ratingComment}
+                      onChangeText={setRatingComment}
+                      placeholder="Chia sẻ trải nghiệm của bạn về tài xế, xe và chuyến đi..."
+                      placeholderTextColor={COLORS.slate400}
+                      textAlignVertical="top"
+                    />
+                    <Text style={styles.commentCounter}>{ratingComment.length}/300</Text>
+                  </Card>
+
+                  {ratingError ? (
+                    <View style={styles.cancelInfoBox}>
+                      <Text style={styles.cancelInfoText}>{ratingError}</Text>
+                    </View>
+                  ) : null}
+                </ScrollView>
+
+                <View style={styles.detailFooter}>
+                  <Pressable
+                    style={[
+                      styles.rateFullBtn,
+                      (ratingSubmitting || ratingTarget.status !== 'COMPLETED' || ratingTarget.rated) &&
+                        styles.rateFullBtnDisabled,
+                    ]}
+                    disabled={
+                      ratingSubmitting || ratingTarget.status !== 'COMPLETED' || ratingTarget.rated
+                    }
+                    onPress={() => void handleSubmitRating()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Gửi đánh giá"
+                  >
+                    {ratingSubmitting ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={styles.rateFullBtnText}>
+                        {ratingTarget.rated ? 'Bạn đã đánh giá chuyến này' : 'Gửi đánh giá'}
+                      </Text>
+                    )}
+                  </Pressable>
+                </View>
+              </>
+            )}
           </View>
         ) : null}
       </Modal>
@@ -819,4 +1079,128 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dangerBtnText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
+  rateCtaBtn: {
+    marginTop: 10,
+    backgroundColor: COLORS.warningSoft,
+    borderColor: '#fde68a',
+    borderWidth: 1,
+    borderRadius: 11,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  rateCtaText: { fontSize: 13, fontWeight: '700', color: COLORS.warningText },
+  ratedBadgeRow: {
+    marginTop: 10,
+    backgroundColor: COLORS.successSoft,
+    borderColor: '#bbf7d0',
+    borderWidth: 1,
+    borderRadius: 11,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  ratedBadgeText: { fontSize: 12, fontWeight: '700', color: COLORS.success },
+  detailRatedBanner: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: COLORS.successSoft,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  detailRatedText: { fontSize: 14, fontWeight: '700', color: COLORS.success },
+  rateFullBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    height: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  rateFullBtnDisabled: { opacity: 0.65 },
+  rateFullBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+  ratingCardTitle: { fontSize: 16, fontWeight: '700', color: COLORS.navy, textAlign: 'center' },
+  ratingCardSub: { fontSize: 12, color: COLORS.slate500, textAlign: 'center', marginTop: 2 },
+  starRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  starHit: { padding: 4 },
+  ratingHint: {
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    color: COLORS.slate400,
+  },
+  ratingHintSelected: { color: COLORS.warningText },
+  ratingHintError: { color: COLORS.danger },
+  commentLabel: { fontSize: 14, fontWeight: '700', color: COLORS.navy },
+  commentOpt: { fontWeight: '400', color: COLORS.slate400 },
+  commentInput: {
+    marginTop: 10,
+    minHeight: 100,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14,
+    color: COLORS.navy,
+    backgroundColor: COLORS.surface,
+  },
+  commentCounter: {
+    marginTop: 6,
+    textAlign: 'right',
+    fontSize: 12,
+    color: COLORS.slate400,
+  },
+  ratingDoneCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  ratingSuccessOuter: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: COLORS.successSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ratingSuccessInner: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ratingDoneTitle: {
+    marginTop: 20,
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.navy,
+    textAlign: 'center',
+  },
+  ratingDoneSub: {
+    marginTop: 8,
+    fontSize: 14,
+    color: COLORS.slate500,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
 });

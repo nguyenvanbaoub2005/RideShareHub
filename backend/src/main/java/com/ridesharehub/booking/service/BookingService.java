@@ -11,6 +11,8 @@ import com.ridesharehub.booking.enums.BookingStatus;
 import com.ridesharehub.booking.repository.BookingRepository;
 import com.ridesharehub.company.entity.TransportCompany;
 import com.ridesharehub.company.repository.CompanyRepository;
+import com.ridesharehub.rating.entity.Rating;
+import com.ridesharehub.rating.repository.RatingRepository;
 import com.ridesharehub.security.AuthPrincipal;
 import com.ridesharehub.trip.entity.Trip;
 import com.ridesharehub.trip.enums.TripStatus;
@@ -22,8 +24,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -49,6 +54,7 @@ public class BookingService {
     private final UserRepository userRepository;
     private final TripSearchService tripSearchService;
     private final CompanyRepository companyRepository;
+    private final RatingRepository ratingRepository;
     private final boolean autoConfirm;
     private final long bookCutoffMinutes;
     private final long cancelCutoffMinutes;
@@ -60,6 +66,7 @@ public class BookingService {
             UserRepository userRepository,
             TripSearchService tripSearchService,
             CompanyRepository companyRepository,
+            RatingRepository ratingRepository,
             @Value("${booking.policy.auto-confirm:true}") boolean autoConfirm,
             @Value("${booking.policy.book-cutoff-minutes:15}") long bookCutoffMinutes,
             @Value("${booking.policy.cancel-cutoff-minutes:30}") long cancelCutoffMinutes) {
@@ -68,6 +75,7 @@ public class BookingService {
         this.userRepository = userRepository;
         this.tripSearchService = tripSearchService;
         this.companyRepository = companyRepository;
+        this.ratingRepository = ratingRepository;
         this.autoConfirm = autoConfirm;
         this.bookCutoffMinutes = Math.max(0L, bookCutoffMinutes);
         this.cancelCutoffMinutes = Math.max(0L, cancelCutoffMinutes);
@@ -80,9 +88,22 @@ public class BookingService {
             TripSearchService tripSearchService,
             CompanyRepository companyRepository,
             boolean autoConfirm,
+            long bookCutoffMinutes,
             long cancelCutoffMinutes) {
         this(bookingRepository, tripRepository, userRepository, tripSearchService,
-                companyRepository, autoConfirm, 15L, cancelCutoffMinutes);
+                companyRepository, null, autoConfirm, bookCutoffMinutes, cancelCutoffMinutes);
+    }
+
+    public BookingService(
+            BookingRepository bookingRepository,
+            TripRepository tripRepository,
+            UserRepository userRepository,
+            TripSearchService tripSearchService,
+            CompanyRepository companyRepository,
+            boolean autoConfirm,
+            long cancelCutoffMinutes) {
+        this(bookingRepository, tripRepository, userRepository, tripSearchService,
+                companyRepository, null, autoConfirm, 15L, cancelCutoffMinutes);
     }
 
     public BookingService(
@@ -93,7 +114,7 @@ public class BookingService {
             CompanyRepository companyRepository,
             boolean autoConfirm) {
         this(bookingRepository, tripRepository, userRepository, tripSearchService,
-                companyRepository, autoConfirm, 15L, 30L);
+                companyRepository, null, autoConfirm, 15L, 30L);
     }
 
     public BookingService(
@@ -103,7 +124,7 @@ public class BookingService {
             TripSearchService tripSearchService,
             boolean autoConfirm) {
         this(bookingRepository, tripRepository, userRepository, tripSearchService,
-                null, autoConfirm, 15L, 30L);
+                null, null, autoConfirm, 15L, 30L);
     }
 
     public BookingService(
@@ -220,9 +241,16 @@ public class BookingService {
     @Transactional(readOnly = true)
     public List<BookingResponse> listMyBookings(AuthPrincipal principal) {
         requireAuthenticated(principal);
-        return bookingRepository.findAllByPassenger_IdOrderByCreatedAtDesc(principal.userId())
+        List<Booking> bookings = bookingRepository.findAllByPassenger_IdOrderByCreatedAtDesc(principal.userId());
+        if (bookings.isEmpty() || ratingRepository == null) {
+            return bookings.stream().map(BookingResponse::from).toList();
+        }
+        List<Long> bookingIds = bookings.stream().map(Booking::getId).toList();
+        Map<Long, Rating> ratingByBookingId = ratingRepository.findAllByBooking_IdIn(bookingIds)
                 .stream()
-                .map(BookingResponse::from)
+                .collect(Collectors.toMap(r -> r.getBooking().getId(), Function.identity(), (a, b) -> a));
+        return bookings.stream()
+                .map(b -> BookingResponse.from(b, ratingByBookingId.get(b.getId())))
                 .toList();
     }
 
@@ -269,7 +297,10 @@ public class BookingService {
         requireAuthenticated(principal);
         Booking booking = requireBooking(bookingId);
         requireBookingViewer(booking, principal);
-        return BookingResponse.from(booking);
+        Rating rating = ratingRepository != null
+                ? ratingRepository.findByBooking_Id(bookingId).orElse(null)
+                : null;
+        return BookingResponse.from(booking, rating);
     }
 
     // ================================================================== Lifecycle

@@ -26,6 +26,7 @@ import {
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Star,
   Ticket,
   User,
   X,
@@ -150,6 +151,18 @@ export function BackGlyph({ size = 18, color = '#ffffff' }: { size?: number; col
 
 export function SeatGlyph({ size = 16, color = COLORS.primary }: { size?: number; color?: string }) {
   return <User size={size} color={color} strokeWidth={2} />;
+}
+
+export function StarGlyph({
+  size = 24,
+  color = '#f59e0b',
+  filled = false,
+}: {
+  size?: number;
+  color?: string;
+  filled?: boolean;
+}) {
+  return <Star size={size} color={color} filled={filled} strokeWidth={2} />;
 }
 
 /** Brand Logo matching Figma PA-01 / PA-02 */

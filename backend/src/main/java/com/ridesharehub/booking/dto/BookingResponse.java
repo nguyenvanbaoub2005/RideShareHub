@@ -2,12 +2,13 @@ package com.ridesharehub.booking.dto;
 
 import com.ridesharehub.booking.entity.Booking;
 import com.ridesharehub.booking.enums.BookingStatus;
+import com.ridesharehub.rating.entity.Rating;
 import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
- * SP2-P2-01: Read-only response view for Booking.
- * Includes OpenAPI Booking fields and Trip context for Passenger UI.
+ * SP2-P2-01 & SP4-P1-01: Read-only response view for Booking.
+ * Includes OpenAPI Booking fields, Trip context, and optional Rating summary.
  */
 public record BookingResponse(
         Long id,
@@ -35,9 +36,15 @@ public record BookingResponse(
         String cancelReason,
         Instant confirmedAt,
         Instant cancelledAt,
-        Instant createdAt) {
+        Instant createdAt,
+        boolean rated,
+        Integer ratingScore) {
 
     public static BookingResponse from(Booking b) {
+        return from(b, null);
+    }
+
+    public static BookingResponse from(Booking b, Rating rating) {
         var t = b.getTrip();
         var r = t.getRoute();
         return new BookingResponse(
@@ -66,6 +73,8 @@ public record BookingResponse(
                 b.getCancelReason(),
                 b.getConfirmedAt(),
                 b.getCancelledAt(),
-                b.getCreatedAt());
+                b.getCreatedAt(),
+                rating != null,
+                rating != null ? rating.getScore() : null);
     }
 }

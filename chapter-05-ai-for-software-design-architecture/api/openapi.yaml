@@ -1,45 +1,123 @@
-openapi: 3.1.0
+openapi: 3.0.3
 info:
-  title: RideShareHub V1 API
-  version: 0.1.0-draft
-  description: Proposed contract for the accepted V1 core journey. Open product policies remain unresolved.
+  title: RideShareHub REST API
+  version: 1.0.0
+  description: >-
+    Verified OpenAPI contract synchronized with implemented Sprint 1-4 Spring Boot controllers
+    (Auth, Company/Fleet/Trip CRUD, Search, Bookings, Route Optimization, Driver Execution,
+    Realtime Tracking/Incidents, Passenger Ratings, and Admin Directory/Overview).
 servers:
-  - url: /api/v1
+  - url: http://localhost:8080
+    description: Local Spring Boot API Server
 security:
   - bearerAuth: []
 tags:
+  - name: Auth
   - name: Companies
-  - name: Trips
+  - name: Fleet & Routes
+  - name: Trips & Search
   - name: Bookings
-  - name: Execution
-  - name: Tracking
+  - name: Optimization
+  - name: Driver Execution
+  - name: Monitoring & Incidents
   - name: Ratings
+  - name: Admin
 paths:
-  /companies/registrations:
+  /api/v1/auth/register:
     post:
-      tags: [Companies]
-      summary: Submit a Transport Company registration
-      operationId: registerCompany
+      tags: [Auth]
+      summary: Register a new PASSENGER or TRANSPORT_COMPANY account
+      security: []
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/CompanyRegistrationRequest'
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
       responses:
-        '201':
-          description: Registration created in PENDING state
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Company'
-        '422':
-          $ref: '#/components/responses/ValidationError'
-  /admin/companies/{companyId}/decision:
+        '201': { description: Account registered }
+        '409': { description: Email or phone already exists }
+        '422': { description: Validation error }
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate user and issue JWT access + refresh tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200': { description: Authenticated }
+        '401': { description: Invalid credentials }
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token using refresh token
+      security: []
+      responses:
+        '200': { description: Token refreshed }
+        '401': { description: Invalid refresh token }
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Invalidate active tokens
+      responses:
+        '200': { description: Logged out }
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user profile
+      responses:
+        '200': { description: Current profile }
+    put:
+      tags: [Auth]
+      summary: Update current user profile
+      responses:
+        '200': { description: Profile updated }
+        '422': { description: Validation error }
+
+  /api/v1/companies/registrations:
+    get:
+      tags: [Companies]
+      summary: List company registrations (Admin / own)
+      responses:
+        '200': { description: List of company registrations }
     post:
       tags: [Companies]
-      summary: Approve or reject a pending company
-      operationId: decideCompanyRegistration
+      summary: Register a transport company (PENDING status)
+      responses:
+        '201': { description: Company registration created }
+  /api/v1/companies/me:
+    get:
+      tags: [Companies]
+      summary: Get current TRANSPORT_COMPANY owner's company profile
+      responses:
+        '200': { description: Company profile }
+    put:
+      tags: [Companies]
+      summary: Update current company profile (resubmits REJECTED -> PENDING)
+      responses:
+        '200': { description: Updated company profile }
+  /api/v1/companies/{companyId}:
+    get:
+      tags: [Companies]
+      summary: Get company detail by ID
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '200': { description: Company detail }
+    put:
+      tags: [Companies]
+      summary: Update company profile by ID
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '200': { description: Company updated }
+  /api/v1/admin/companies/{companyId}/decision:
+    post:
+      tags: [Companies, Admin]
+      summary: Approve or reject a pending transport company
       parameters:
         - $ref: '#/components/parameters/CompanyId'
       requestBody:
@@ -50,297 +128,471 @@ paths:
               type: object
               required: [decision]
               properties:
-                decision:
-                  type: string
-                  enum: [APPROVE, REJECT]
-                reason:
-                  type: string
-                  maxLength: 500
+                decision: { type: string, enum: [APPROVE, REJECT] }
+                reason: { type: string, maxLength: 500 }
       responses:
-        '200':
-          description: Decision persisted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Company'
-        '409':
-          $ref: '#/components/responses/ConflictError'
-  /trips:
+        '200': { description: Decision recorded }
+        '409': { description: Company is not in PENDING state }
+
+  /api/v1/companies/{companyId}/vehicles:
     get:
-      tags: [Trips]
-      summary: Search bookable Trips
-      operationId: searchTrips
+      tags: [Fleet & Routes]
+      summary: List company vehicles
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '200': { description: Vehicle list }
+    post:
+      tags: [Fleet & Routes]
+      summary: Create vehicle
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '201': { description: Vehicle created }
+  /api/v1/companies/{companyId}/drivers:
+    post:
+      tags: [Fleet & Routes]
+      summary: Create driver and link/provision DRIVER user account
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '201': { description: Driver created }
+    get:
+      tags: [Fleet & Routes]
+      summary: List company drivers
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '200': { description: Driver list }
+  /api/v1/companies/{companyId}/routes:
+    post:
+      tags: [Fleet & Routes]
+      summary: Create inter-city route
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '201': { description: Route created }
+    get:
+      tags: [Fleet & Routes]
+      summary: List company routes
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '200': { description: Route list }
+  /api/v1/companies/{companyId}/trips:
+    post:
+      tags: [Trips & Search]
+      summary: Create draft trip
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '201': { description: Trip created }
+    get:
+      tags: [Trips & Search]
+      summary: List company trips
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '200': { description: Trip list }
+  /api/v1/companies/{companyId}/trips/{tripId}/publish:
+    post:
+      tags: [Trips & Search]
+      summary: Publish trip (requires APPROVED company & available resources)
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Trip published }
+  /api/v1/companies/{companyId}/trips/{tripId}/cancel:
+    post:
+      tags: [Trips & Search]
+      summary: Cancel trip and release active bookings
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Trip cancelled }
+
+  /api/trips/search:
+    get:
+      tags: [Trips & Search]
+      summary: Search PUBLISHED trips of APPROVED companies (15-min cutoff enforced)
       parameters:
         - name: origin
           in: query
-          required: true
+          required: false
           schema: { type: string }
         - name: destination
           in: query
-          required: true
+          required: false
           schema: { type: string }
         - name: date
           in: query
-          required: true
+          required: false
           schema: { type: string, format: date }
-        - name: companyId
+        - name: minSeats
           in: query
-          schema: { type: integer, format: int64 }
-        - name: sort
-          in: query
-          schema:
-            type: string
-            enum: [DEPARTURE_ASC, FARE_ASC, RATING_DESC, SEATS_DESC]
+          required: false
+          schema: { type: integer, minimum: 1 }
       responses:
-        '200':
-          description: Matching Trips; an empty array is a valid result
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/TripSummary' }
-    post:
-      tags: [Trips]
-      summary: Create a company-owned draft Trip
-      operationId: createTrip
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/CreateTripRequest' }
-      responses:
-        '201':
-          description: Draft created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Trip' }
-        '422':
-          $ref: '#/components/responses/ValidationError'
-  /trips/{tripId}/publish:
-    post:
-      tags: [Trips]
-      summary: Publish a valid draft Trip
-      operationId: publishTrip
-      parameters:
-        - $ref: '#/components/parameters/TripId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      responses:
-        '200':
-          description: Trip published
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Trip' }
-        '409':
-          $ref: '#/components/responses/ConflictError'
-  /trips/{tripId}/bookings:
+        '200': { description: Bookable trip search results }
+
+  /api/v1/trips/{tripId}/bookings:
     post:
       tags: [Bookings]
-      summary: Atomically request seats and create pickup/dropoff stops
-      operationId: createBooking
+      summary: Create booking atomically under pessimistic Trip lock (idempotent)
       parameters:
         - $ref: '#/components/parameters/TripId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/CreateBookingRequest' }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 100 }
       responses:
-        '201':
-          description: Booking created under the accepted confirmation policy
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Booking' }
-        '409':
-          $ref: '#/components/responses/ConflictError'
-        '422':
-          $ref: '#/components/responses/ValidationError'
-  /bookings/{bookingId}:
+        '201': { description: Booking created }
+        '409': { description: Insufficient seats or booking cutoff reached }
     get:
       tags: [Bookings]
-      summary: Get an authorized Booking
-      operationId: getBooking
+      summary: List bookings of a trip
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Trip bookings }
+  /api/v1/bookings/me:
+    get:
+      tags: [Bookings]
+      summary: List current passenger bookings (includes rated & ratingScore)
+      responses:
+        '200': { description: Passenger bookings list }
+  /api/v1/bookings/{bookingId}:
+    get:
+      tags: [Bookings]
+      summary: Get booking details
       parameters:
         - $ref: '#/components/parameters/BookingId'
       responses:
-        '200':
-          description: Current Booking
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Booking' }
-        '404':
-          $ref: '#/components/responses/NotFoundError'
-  /bookings/{bookingId}/cancel:
+        '200': { description: Booking details }
+  /api/v1/bookings/{bookingId}/cancel:
     post:
       tags: [Bookings]
-      summary: Cancel under the accepted cancellation policy
-      operationId: cancelBooking
+      summary: Cancel booking (enforces 30-min passenger cutoff) and release seats
       parameters:
         - $ref: '#/components/parameters/BookingId'
-        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
-        '200':
-          description: Booking cancelled and capacity released once
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Booking' }
-        '409':
-          $ref: '#/components/responses/ConflictError'
-  /trips/{tripId}/route-proposals:
+        '200': { description: Booking cancelled }
+        '409': { description: Within 30-min cutoff or invalid state }
+  /api/v1/bookings/{bookingId}/confirm:
     post:
-      tags: [Execution]
-      summary: Produce an advisory ordered stop proposal
-      operationId: proposeTripRoute
+      tags: [Bookings]
+      summary: Confirm a PENDING booking
       parameters:
-        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/BookingId'
       responses:
-        '200':
-          description: Validated proposal; no Trip or Booking transition implied
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/RouteProposal' }
-        '503':
-          $ref: '#/components/responses/DependencyError'
-  /trips/{tripId}/route-proposals/{proposalId}/decision:
+        '200': { description: Booking confirmed }
+  /api/v1/bookings/{bookingId}/no-show:
     post:
-      tags: [Execution]
-      summary: Accept or reject a route proposal without changing Booking state
-      operationId: decideRouteProposal
+      tags: [Bookings]
+      summary: Mark passenger NO_SHOW and release seats
       parameters:
-        - $ref: '#/components/parameters/TripId'
-        - name: proposalId
-          in: path
-          required: true
-          schema: { type: integer, format: int64 }
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [decision, expectedVersion]
-              properties:
-                decision: { type: string, enum: [ACCEPT, REJECT] }
-                reviewNote: { type: string, maxLength: 500 }
-                expectedVersion: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/BookingId'
       responses:
-        '200':
-          description: Proposal decision persisted
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/RouteProposal' }
-        '409':
-          $ref: '#/components/responses/ConflictError'
-  /trips/{tripId}/driver-transition:
-    post:
-      tags: [Execution]
-      summary: Apply an assigned Driver Trip transition
-      operationId: transitionDriverTrip
-      parameters:
-        - $ref: '#/components/parameters/TripId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [transition]
-              properties:
-                transition:
-                  type: string
-                  enum: [ACCEPT, READY, START, COMPLETE]
-                expectedVersion: { type: integer, format: int64 }
-      responses:
-        '200':
-          description: Transition persisted
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Trip' }
-        '409':
-          $ref: '#/components/responses/ConflictError'
-  /trips/{tripId}/stops/{stopId}/transition:
-    post:
-      tags: [Execution]
-      summary: Mark an assigned Trip stop arrived or completed
-      operationId: transitionTripStop
-      parameters:
-        - $ref: '#/components/parameters/TripId'
-        - name: stopId
-          in: path
-          required: true
-          schema: { type: integer, format: int64 }
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [transition, expectedVersion]
-              properties:
-                transition: { type: string, enum: [ARRIVE, COMPLETE] }
-                expectedVersion: { type: integer, format: int64 }
-      responses:
-        '200':
-          description: Stop transition persisted
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/TripStop' }
-        '409':
-          $ref: '#/components/responses/ConflictError'
-  /trips/{tripId}/locations:
-    post:
-      tags: [Tracking]
-      summary: Submit assigned Driver location
-      operationId: submitDriverLocation
-      parameters:
-        - $ref: '#/components/parameters/TripId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/LocationSample' }
-      responses:
-        '202': { description: Location accepted }
-  /trips/{tripId}/tracking:
+        '200': { description: Marked NO_SHOW }
+  /api/v1/companies/{companyId}/bookings/recent:
     get:
-      tags: [Tracking]
-      summary: Load authorized current tracking snapshot
-      operationId: getTrackingSnapshot
+      tags: [Bookings]
+      summary: List 20 most recent company bookings
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '200': { description: Recent company bookings }
+
+  /api/v1/trips/{tripId}/stops:
+    get:
+      tags: [Optimization]
+      summary: List ordered pickup/dropoff stops for a trip
       parameters:
         - $ref: '#/components/parameters/TripId'
       responses:
-        '200':
-          description: Durable state plus latest available operational location
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/TrackingSnapshot' }
-  /bookings/{bookingId}/rating:
+        '200': { description: Ordered TripStop list }
+    post:
+      tags: [Optimization]
+      summary: Synchronize/reorder pickup and dropoff TripStops
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Synchronized stops }
+  /api/v1/trips/{tripId}/optimize:
+    post:
+      tags: [Optimization]
+      summary: Invoke FastAPI + OR-Tools VRPPD optimizer and save PROPOSED route proposal
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '201': { description: Route proposal created in PROPOSED state }
+  /api/v1/trips/{tripId}/proposals:
+    get:
+      tags: [Optimization]
+      summary: List optimization proposals for a trip
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Proposal history }
+  /api/v1/trips/{tripId}/proposals/{proposalId}/accept:
+    post:
+      tags: [Optimization]
+      summary: Accept a route proposal (marks previous accepted proposals SUPERSEDED)
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/ProposalId'
+      responses:
+        '200': { description: Proposal accepted }
+  /api/v1/trips/{tripId}/proposals/{proposalId}/reject:
+    post:
+      tags: [Optimization]
+      summary: Reject a route proposal
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/ProposalId'
+      responses:
+        '200': { description: Proposal rejected }
+
+  /api/v1/driver/me:
+    get:
+      tags: [Driver Execution]
+      summary: Get current driver profile
+      responses:
+        '200': { description: Driver profile }
+  /api/v1/driver/status:
+    put:
+      tags: [Driver Execution]
+      summary: Toggle driver status between AVAILABLE and INACTIVE
+      responses:
+        '200': { description: Driver status updated }
+  /api/v1/driver/trips:
+    get:
+      tags: [Driver Execution]
+      summary: List trips assigned to current driver
+      responses:
+        '200': { description: Assigned trips }
+  /api/v1/driver/trips/{tripId}/accept:
+    post:
+      tags: [Driver Execution]
+      summary: Driver accepts assigned trip
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Assignment accepted }
+  /api/v1/driver/trips/{tripId}/reject:
+    post:
+      tags: [Driver Execution]
+      summary: Driver rejects assigned trip
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Assignment rejected }
+  /api/v1/driver/trips/{tripId}/start:
+    post:
+      tags: [Driver Execution]
+      summary: Start accepted trip (transitions to IN_PROGRESS)
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Trip started }
+  /api/v1/driver/trips/{tripId}/complete:
+    post:
+      tags: [Driver Execution]
+      summary: Complete trip after all stops are handled
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Trip completed }
+  /api/v1/driver/trips/{tripId}/stops/{stopId}/status:
+    post:
+      tags: [Driver Execution]
+      summary: Update stop execution status (ARRIVED, PICKED_UP, DROPPED_OFF)
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/StopId'
+      responses:
+        '200': { description: Stop status updated }
+        '409': { description: Pickup-before-dropoff invariant violated }
+  /api/v1/driver/trips/{tripId}/location:
+    post:
+      tags: [Driver Execution]
+      summary: Update driver live GPS location
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: GPS snapshot saved }
+  /api/v1/trips/{tripId}/live-snapshot:
+    get:
+      tags: [Driver Execution, Monitoring & Incidents]
+      summary: Get live tracking snapshot with privacy-masked passenger stops
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Live snapshot returned }
+
+  /api/v1/driver/trips/{tripId}/incidents:
+    post:
+      tags: [Monitoring & Incidents]
+      summary: Driver reports an on-trip incident
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '201': { description: Incident reported }
+    get:
+      tags: [Monitoring & Incidents]
+      summary: List incidents reported on a driver trip
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Incident list }
+  /api/v1/companies/{companyId}/monitoring/trips:
+    get:
+      tags: [Monitoring & Incidents]
+      summary: List company trips with live GPS progress & open incidents count
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '200': { description: Monitoring summaries }
+  /api/v1/admin/monitoring/trips:
+    get:
+      tags: [Monitoring & Incidents, Admin]
+      summary: List system-wide trips with live telemetry & open incidents count
+      responses:
+        '200': { description: Admin monitoring summaries }
+  /api/v1/admin/incidents:
+    get:
+      tags: [Monitoring & Incidents, Admin]
+      summary: List system-wide driver incidents
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [OPEN, ACKNOWLEDGED, RESOLVED] }
+      responses:
+        '200': { description: Incidents list }
+  /api/v1/trips/{tripId}/incidents/{incidentId}/resolve:
+    post:
+      tags: [Monitoring & Incidents]
+      summary: Resolve an open trip incident
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/IncidentId'
+      responses:
+        '200': { description: Incident resolved }
+
+  /api/v1/bookings/{bookingId}/rating:
     post:
       tags: [Ratings]
-      summary: Rate the company and Driver after a completed Booking
-      operationId: createRating
+      summary: Rate a completed booking (1-5 stars, once per booking)
       parameters:
         - $ref: '#/components/parameters/BookingId'
-        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [score]
-              properties:
-                score:
-                  type: integer
-                  description: Allowed scale remains an open product decision; validation is added after approval.
-                comment: { type: string, maxLength: 1000 }
+            schema: { $ref: '#/components/schemas/CreateRatingRequest' }
       responses:
-        '201': { description: Rating stored for the eligible completed Booking }
-        '409':
-          $ref: '#/components/responses/ConflictError'
+        '201':
+          description: Rating persisted and company average recalculated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RatingResponse' }
+        '403': { description: Only the owning PASSENGER can rate }
+        '409': { description: Booking/trip not COMPLETED or already rated }
+        '422': { description: Invalid score (must be 1..5) or comment > 500 chars }
+    get:
+      tags: [Ratings]
+      summary: Get rating for a booking
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200': { description: Rating detail }
+        '404': { description: Booking or rating not found }
+  /api/v1/companies/{companyId}/ratings:
+    get:
+      tags: [Ratings]
+      summary: List passenger ratings for a transport company
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '200': { description: Company ratings list }
+
+  /api/v1/admin/overview:
+    get:
+      tags: [Admin]
+      summary: Get platform operational KPIs, pending companies & recent ratings (AD-02)
+      responses:
+        '200':
+          description: Operational overview KPIs
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminOverviewResponse' }
+  /api/v1/admin/users:
+    get:
+      tags: [Admin]
+      summary: Paginated read-only user directory (AD-05)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: role
+          in: query
+          required: false
+          schema: { type: string, enum: [PASSENGER, DRIVER, TRANSPORT_COMPANY, ADMIN] }
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [ACTIVE, LOCKED] }
+        - name: query
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200': { description: Paginated user list }
+  /api/v1/admin/drivers:
+    get:
+      tags: [Admin]
+      summary: Paginated read-only driver directory
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [AVAILABLE, ON_TRIP, INACTIVE] }
+        - name: companyId
+          in: query
+          required: false
+          schema: { type: integer, format: int64 }
+        - name: query
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200': { description: Paginated driver list }
+  /api/v1/admin/trips:
+    get:
+      tags: [Admin]
+      summary: Paginated read-only trip directory (AD-07)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [ALL, UPCOMING, DRAFT, PUBLISHED, FULL, IN_PROGRESS, COMPLETED, CANCELLED] }
+        - name: companyId
+          in: query
+          required: false
+          schema: { type: integer, format: int64 }
+        - name: query
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200': { description: Paginated trip list }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -363,174 +615,90 @@ components:
       in: path
       required: true
       schema: { type: integer, format: int64 }
-    IdempotencyKey:
-      name: Idempotency-Key
-      in: header
+    ProposalId:
+      name: proposalId
+      in: path
       required: true
-      schema: { type: string, minLength: 8, maxLength: 100 }
-  responses:
-    ValidationError:
-      description: Input or business validation failed
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-    ConflictError:
-      description: Capacity, transition, schedule or version conflict
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-    NotFoundError:
-      description: Resource not found or not visible to this actor
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-    DependencyError:
-      description: Optimizer or routing dependency unavailable
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+      schema: { type: integer, format: int64 }
+    StopId:
+      name: stopId
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    IncidentId:
+      name: incidentId
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, default: 0, minimum: 0 }
+    Size:
+      name: size
+      in: query
+      required: false
+      schema: { type: integer, default: 10, minimum: 1, maximum: 100 }
   schemas:
-    CompanyRegistrationRequest:
+    RegisterRequest:
       type: object
-      required: [name, phone, address, representativeName, businessInformation]
+      required: [email, password, fullName, role]
       properties:
-        name: { type: string, maxLength: 200 }
-        phone: { type: string, maxLength: 30 }
-        address: { type: string, maxLength: 500 }
-        representativeName: { type: string, maxLength: 200 }
-        businessInformation: { type: string, maxLength: 2000 }
-    Company:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        fullName: { type: string }
+        role: { type: string, enum: [PASSENGER, TRANSPORT_COMPANY] }
+        phone: { type: string }
+    LoginRequest:
       type: object
-      required: [id, name, status, version]
+      required: [email, password]
       properties:
-        id: { type: integer, format: int64 }
-        name: { type: string }
-        status: { type: string, enum: [PENDING, APPROVED, REJECTED] }
-        version: { type: integer, format: int64 }
-    CreateTripRequest:
+        email: { type: string, format: email }
+        password: { type: string }
+    CreateRatingRequest:
       type: object
-      required: [routeId, vehicleId, driverId, departureAt, fare]
       properties:
-        routeId: { type: integer, format: int64 }
-        vehicleId: { type: integer, format: int64 }
-        driverId: { type: integer, format: int64 }
-        departureAt: { type: string, format: date-time }
-        fare: { type: number, minimum: 0 }
-    TripSummary:
+        score: { type: integer, minimum: 1, maximum: 5 }
+        tripScore: { type: integer, minimum: 1, maximum: 5 }
+        driverScore: { type: integer, minimum: 1, maximum: 5 }
+        companyScore: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, maxLength: 500 }
+    RatingResponse:
       type: object
-      required: [id, companyId, companyName, departureAt, vehicleType, availableSeats, fare, status]
       properties:
         id: { type: integer, format: int64 }
+        bookingId: { type: integer, format: int64 }
+        bookingCode: { type: string }
+        tripId: { type: integer, format: int64 }
+        routeName: { type: string }
         companyId: { type: integer, format: int64 }
         companyName: { type: string }
-        departureAt: { type: string, format: date-time }
-        vehicleType: { type: string }
-        availableSeats: { type: integer, minimum: 0 }
-        fare: { type: number, minimum: 0 }
-        rating: { type: number, minimum: 0 }
-        status: { type: string, enum: [DRAFT, PUBLISHED, FULL, IN_PROGRESS, COMPLETED, CANCELLED] }
-    Trip:
-      allOf:
-        - $ref: '#/components/schemas/TripSummary'
-        - type: object
-          required: [routeId, vehicleId, driverId, driverAssignmentStatus, capacity, activeBookedSeats, version]
-          properties:
-            routeId: { type: integer, format: int64 }
-            vehicleId: { type: integer, format: int64 }
-            driverId: { type: integer, format: int64 }
-            driverAssignmentStatus: { type: string, enum: [ASSIGNED, ACCEPTED, READY] }
-            capacity: { type: integer, minimum: 1 }
-            activeBookedSeats: { type: integer, minimum: 0 }
-            version: { type: integer, format: int64 }
-    CreateBookingRequest:
-      type: object
-      required: [seatCount, pickup, dropoff]
-      properties:
-        seatCount: { type: integer, minimum: 1 }
-        pickup: { $ref: '#/components/schemas/LocationInput' }
-        dropoff: { $ref: '#/components/schemas/LocationInput' }
-    LocationInput:
-      type: object
-      required: [label]
-      properties:
-        label: { type: string, maxLength: 500 }
-        latitude: { type: number, minimum: -90, maximum: 90 }
-        longitude: { type: number, minimum: -180, maximum: 180 }
-    Booking:
-      type: object
-      required: [id, passengerId, tripId, seatCount, pickup, dropoff, fareEstimate, status]
-      properties:
-        id: { type: integer, format: int64 }
+        driverId: { type: integer, format: int64 }
+        driverName: { type: string }
         passengerId: { type: integer, format: int64 }
-        tripId: { type: integer, format: int64 }
-        seatCount: { type: integer, minimum: 1 }
-        pickup: { $ref: '#/components/schemas/LocationInput' }
-        dropoff: { $ref: '#/components/schemas/LocationInput' }
-        fareEstimate: { type: number, minimum: 0 }
-        status: { type: string, enum: [PENDING, CONFIRMED, PICKED_UP, COMPLETED, CANCELLED, NO_SHOW] }
-    TripStop:
+        passengerName: { type: string }
+        score: { type: integer }
+        tripScore: { type: integer }
+        driverScore: { type: integer }
+        companyScore: { type: integer }
+        comment: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    AdminOverviewResponse:
       type: object
-      required: [id, tripId, bookingId, type, location, seatDelta, status, version]
       properties:
-        id: { type: integer, format: int64 }
-        tripId: { type: integer, format: int64 }
-        bookingId: { type: integer, format: int64 }
-        type: { type: string, enum: [PICKUP, DROPOFF] }
-        location: { $ref: '#/components/schemas/LocationInput' }
-        seatDelta: { type: integer }
-        status: { type: string, enum: [PENDING, ARRIVED, COMPLETED] }
-        version: { type: integer, format: int64 }
-    RouteProposal:
-      type: object
-      required: [id, tripId, status, orderedStops, version]
-      properties:
-        id: { type: integer, format: int64 }
-        tripId: { type: integer, format: int64 }
-        status: { type: string, enum: [PROPOSED, ACCEPTED, REJECTED, SUPERSEDED] }
-        orderedStops:
-          type: array
-          items: { $ref: '#/components/schemas/RouteProposalStop' }
-        estimatedDistanceMeters: { type: integer, minimum: 0 }
-        estimatedDurationSeconds: { type: integer, minimum: 0 }
-        version: { type: integer, format: int64 }
-    RouteProposalStop:
-      type: object
-      required: [tripStopId, sequence]
-      properties:
-        tripStopId: { type: integer, format: int64 }
-        sequence: { type: integer, minimum: 0 }
-        plannedEta: { type: string, format: date-time }
-    LocationSample:
-      type: object
-      required: [latitude, longitude, recordedAt]
-      properties:
-        latitude: { type: number, minimum: -90, maximum: 90 }
-        longitude: { type: number, minimum: -180, maximum: 180 }
-        recordedAt: { type: string, format: date-time }
-    TrackingSnapshot:
-      type: object
-      required: [tripId, tripStatus, stops, version]
-      properties:
-        tripId: { type: integer, format: int64 }
-        tripStatus: { type: string }
-        latestLocation: { $ref: '#/components/schemas/LocationSample' }
-        nextStop: { $ref: '#/components/schemas/TripStop' }
-        stops:
-          type: array
-          items: { $ref: '#/components/schemas/TripStop' }
-        version: { type: integer, format: int64 }
-    Error:
-      type: object
-      required: [code, message, traceId]
-      properties:
-        code: { type: string }
-        message: { type: string }
-        fieldErrors:
-          type: array
-          items:
-            type: object
-            required: [field, message]
-            properties:
-              field: { type: string }
-              message: { type: string }
-        traceId: { type: string }
+        totalCompanies: { type: integer, format: int64 }
+        pendingCompanies: { type: integer, format: int64 }
+        approvedCompanies: { type: integer, format: int64 }
+        rejectedCompanies: { type: integer, format: int64 }
+        totalUsers: { type: integer, format: int64 }
+        totalDrivers: { type: integer, format: int64 }
+        totalTrips: { type: integer, format: int64 }
+        activeTrips: { type: integer, format: int64 }
+        upcomingTrips: { type: integer, format: int64 }
+        completedTrips: { type: integer, format: int64 }
+        cancelledTrips: { type: integer, format: int64 }
+        totalBookings: { type: integer, format: int64 }
+        totalRatings: { type: integer, format: int64 }
+        averageRating: { type: number }
+        openIncidentsCount: { type: integer, format: int64 }

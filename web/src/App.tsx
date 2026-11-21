@@ -5,7 +5,11 @@ import { LoginPage } from './auth/LoginPage';
 import { RegisterPage } from './auth/RegisterPage';
 import { AdminCompanyListPage } from './admin/AdminCompanyListPage';
 import { AdminCompanyDetailPage } from './admin/AdminCompanyDetailPage';
+import { AdminDashboardPage } from './admin/AdminDashboardPage';
+import { AdminDriverListPage } from './admin/AdminDriverListPage';
 import { AdminMonitoringPage } from './admin/AdminMonitoringPage';
+import { AdminTripsPage } from './admin/AdminTripsPage';
+import { AdminUserListPage } from './admin/AdminUserListPage';
 import { CompanyProfilePage } from './company/CompanyProfilePage';
 import { VehicleListPage } from './company/VehicleListPage';
 import { VehicleFormPage } from './company/VehicleFormPage';
@@ -30,14 +34,14 @@ function RequireAdmin() {
 function RequireCompany() {
   const { session } = useAuth();
   if (!session) return <Navigate to="/login" replace />;
-  if (session.role !== 'TRANSPORT_COMPANY') return <Navigate to="/admin/companies" replace />;
+  if (session.role !== 'TRANSPORT_COMPANY') return <Navigate to="/admin/dashboard" replace />;
   return <Outlet />;
 }
 
 function DefaultRedirect() {
   const { session } = useAuth();
   if (!session) return <Navigate to="/login" replace />;
-  if (session.role === 'ADMIN') return <Navigate to="/admin/companies" replace />;
+  if (session.role === 'ADMIN') return <Navigate to="/admin/dashboard" replace />;
   return <Navigate to="/company/profile" replace />;
 }
 
@@ -53,8 +57,12 @@ export function App() {
         <Route path="/register" element={<RegisterPage />} />
 
         <Route element={<RequireAdmin />}>
+          <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/admin/companies" element={<AdminCompanyListPage />} />
           <Route path="/admin/companies/:companyId" element={<AdminCompanyDetailPage />} />
+          <Route path="/admin/users" element={<AdminUserListPage />} />
+          <Route path="/admin/drivers" element={<AdminDriverListPage />} />
+          <Route path="/admin/trips" element={<AdminTripsPage />} />
           <Route path="/admin/monitoring" element={<AdminMonitoringPage />} />
         </Route>
 

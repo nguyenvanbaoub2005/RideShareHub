@@ -394,6 +394,36 @@ export interface BookingRecord {
   confirmedAt?: string | null;
   cancelledAt?: string | null;
   createdAt: string;
+  rated?: boolean;
+  ratingScore?: number | null;
+}
+
+export interface CreateRatingPayload {
+  score?: number;
+  tripScore: number;
+  driverScore: number;
+  companyScore: number;
+  comment?: string | null;
+}
+
+export interface RatingRecord {
+  id: number;
+  bookingId: number;
+  bookingCode: string;
+  tripId: number;
+  routeName: string;
+  companyId: number;
+  companyName: string;
+  driverId: number;
+  driverName: string;
+  passengerId: number;
+  passengerName: string;
+  score: number;
+  tripScore: number;
+  driverScore: number;
+  companyScore: number;
+  comment?: string | null;
+  createdAt: string;
 }
 
 export function generateIdempotencyKey(prefix = 'bk'): string {
@@ -460,6 +490,30 @@ export async function cancelBooking(
       body: JSON.stringify({ reason: reason ?? null }),
     },
   );
+  return result.data;
+}
+
+export async function createBookingRating(
+  accessToken: string,
+  bookingId: number,
+  payload: CreateRatingPayload,
+): Promise<RatingRecord> {
+  const result = await request<RatingRecord>(`/api/v1/bookings/${bookingId}/rating`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(payload),
+  });
+  return result.data;
+}
+
+export async function getBookingRating(
+  accessToken: string,
+  bookingId: number,
+): Promise<RatingRecord> {
+  const result = await request<RatingRecord>(`/api/v1/bookings/${bookingId}/rating`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
   return result.data;
 }
 

@@ -65,6 +65,8 @@ public class User {
     public String getFullName() { return fullName; }
     public UserRole getRole() { return role; }
     public UserStatus getStatus() { return status; }
+    public Instant getCreatedAt() { return createdAt; }
+    public Instant getUpdatedAt() { return updatedAt; }
     public boolean isActive() { return status == UserStatus.ACTIVE; }
     public void lock() { this.status = UserStatus.LOCKED; }
 

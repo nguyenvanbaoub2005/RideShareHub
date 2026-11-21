@@ -6,6 +6,7 @@ import { Badge } from '../components/Badge';
 import { ErrorAlert } from '../components/Alert';
 import { Icon } from '../components/Icon';
 import { PageSpinner } from '../components/Spinner';
+import { buildAdminNav } from './adminNav';
 
 export function AdminCompanyListPage() {
   const [companies, setCompanies] = useState<CompanyResponse[]>([]);
@@ -40,23 +41,7 @@ export function AdminCompanyListPage() {
       .includes(normalizedQuery);
   });
 
-  const navItems = [
-    {
-      id: 'nav-admin-companies',
-      to: '/admin/companies',
-      label: 'Quản lý nhà xe',
-      icon: 'building',
-      active: true,
-      badge: counts.PENDING,
-    },
-    {
-      id: 'nav-admin-monitoring',
-      to: '/admin/monitoring',
-      label: 'Giám sát vận hành',
-      icon: 'route',
-      active: false,
-    },
-  ];
+  const navItems = buildAdminNav('companies', { pendingCompanies: counts.PENDING });
 
   const topbarStatus = (
     <button

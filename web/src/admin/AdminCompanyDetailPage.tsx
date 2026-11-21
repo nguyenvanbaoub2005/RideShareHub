@@ -7,6 +7,7 @@ import { ErrorAlert, SuccessAlert } from '../components/Alert';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Icon } from '../components/Icon';
 import { PageSpinner } from '../components/Spinner';
+import { buildAdminNav } from './adminNav';
 
 export function AdminCompanyDetailPage() {
   const { companyId } = useParams<{ companyId: string }>();
@@ -81,23 +82,7 @@ export function AdminCompanyDetailPage() {
     }
   }
 
-  const navItems = [
-    {
-      id: 'nav-admin-companies',
-      to: '/admin/companies',
-      label: 'Quản lý nhà xe',
-      icon: 'building',
-      active: true,
-      badge: pendingCount,
-    },
-    {
-      id: 'nav-admin-monitoring',
-      to: '/admin/monitoring',
-      label: 'Giám sát vận hành',
-      icon: 'route',
-      active: false,
-    },
-  ];
+  const navItems = buildAdminNav('companies', { pendingCompanies: pendingCount });
 
   const topbarStatus = pendingCount > 0 ? (
     <button

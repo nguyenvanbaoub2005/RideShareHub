@@ -150,6 +150,14 @@ public class TransportCompany {
         this.updatedAt = Instant.now();
     }
 
+    public void updateRatingSummary(BigDecimal avgRating, int ratingCount) {
+        this.avgRating = avgRating != null
+                ? avgRating.setScale(2, java.math.RoundingMode.HALF_UP)
+                : BigDecimal.ZERO.setScale(2, java.math.RoundingMode.HALF_UP);
+        this.ratingCount = Math.max(0, ratingCount);
+        this.updatedAt = Instant.now();
+    }
+
     public boolean isApproved() { return status == CompanyStatus.APPROVED; }
 
     // ------------------------------------------------------------------ accessors

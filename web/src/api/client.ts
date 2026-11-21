@@ -46,6 +46,8 @@ export interface BookingRecord {
   status: 'PENDING' | 'CONFIRMED' | 'PICKED_UP' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
   cancelReason: string | null;
   createdAt: string;
+  rated?: boolean;
+  ratingScore?: number | null;
 }
 
 export interface CompanyResponse {
@@ -670,4 +672,182 @@ export const monitoringApi = {
       method: 'POST',
       body: JSON.stringify({ resolutionNote: resolutionNote ?? null }),
     }),
+};
+
+// ------------------------------------------------------------------ SP4-P1-01/02: Admin Overview & Read-only Directories
+export interface PagedResponse<T> {
+  items: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+}
+
+export interface AdminPendingCompanyItem {
+  id: number;
+  name: string;
+  representativeName: string;
+  contactPhone: string;
+  contactEmail?: string | null;
+  address: string;
+  createdAt: string;
+}
+
+export interface AdminRecentRatingItem {
+  id: number;
+  bookingCode: string;
+  companyName: string;
+  driverName: string;
+  passengerName: string;
+  score: number;
+  comment?: string | null;
+  createdAt: string;
+}
+
+export interface AdminOverviewResponse {
+  totalCompanies: number;
+  pendingCompanies: number;
+  approvedCompanies: number;
+  rejectedCompanies: number;
+  totalUsers: number;
+  passengerCount: number;
+  driverUserCount: number;
+  companyOwnerCount: number;
+  adminCount: number;
+  lockedUsersCount: number;
+  totalDrivers: number;
+  availableDrivers: number;
+  onTripDrivers: number;
+  inactiveDrivers: number;
+  totalTrips: number;
+  activeTrips: number;
+  upcomingTrips: number;
+  completedTrips: number;
+  cancelledTrips: number;
+  draftTrips: number;
+  totalBookings: number;
+  confirmedBookings: number;
+  pickedUpBookings: number;
+  completedBookings: number;
+  cancelledBookings: number;
+  noShowBookings: number;
+  totalRatings: number;
+  averageRating: number;
+  openIncidentsCount: number;
+  pendingCompanyList: AdminPendingCompanyItem[];
+  recentRatings: AdminRecentRatingItem[];
+}
+
+export interface AdminUserResponse {
+  id: number;
+  fullName: string;
+  email: string;
+  phone?: string | null;
+  role: 'PASSENGER' | 'DRIVER' | 'TRANSPORT_COMPANY' | 'ADMIN';
+  status: 'ACTIVE' | 'LOCKED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminDriverResponse {
+  id: number;
+  userId?: number | null;
+  companyId: number;
+  companyName: string;
+  fullName: string;
+  phone: string;
+  licenseNumber: string;
+  status: DriverStatus;
+  totalTrips: number;
+  createdAt: string;
+}
+
+export interface AdminTripResponse {
+  id: number;
+  companyId: number;
+  companyName: string;
+  routeName: string;
+  origin: string;
+  destination: string;
+  driverName: string;
+  driverPhone?: string | null;
+  vehiclePlate: string;
+  vehicleType: string;
+  departureTime: string;
+  estimatedMinutes: number;
+  fare: number;
+  bookedSeats: number;
+  seatCapacity: number;
+  status: TripStatus;
+  assignmentStatus: 'ASSIGNED' | 'ACCEPTED' | 'REJECTED';
+  createdAt: string;
+}
+
+function buildQuery(params: Record<string, string | number | undefined | null>): string {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([key, val]) => {
+    if (val !== undefined && val !== null && val !== '' && val !== 'ALL') {
+      qs.set(key, String(val));
+    }
+  });
+  const encoded = qs.toString();
+  return encoded ? `?${encoded}` : '';
+}
+
+export const adminDirectoryApi = {
+  getOverview: () =>
+    request<AdminOverviewResponse>('/api/v1/admin/overview'),
+
+  listUsers: (params?: {
+    page?: number;
+    size?: number;
+    role?: string;
+    status?: string;
+    query?: string;
+  }) =>
+    request<PagedResponse<AdminUserResponse>>(
+      `/api/v1/admin/users${buildQuery({
+        page: params?.page ?? 0,
+        size: params?.size ?? 10,
+        role: params?.role,
+        status: params?.status,
+        query: params?.query?.trim(),
+      })}`,
+    ),
+
+  listDrivers: (params?: {
+    page?: number;
+    size?: number;
+    status?: string;
+    companyId?: number | string;
+    query?: string;
+  }) =>
+    request<PagedResponse<AdminDriverResponse>>(
+      `/api/v1/admin/drivers${buildQuery({
+        page: params?.page ?? 0,
+        size: params?.size ?? 10,
+        status: params?.status,
+        companyId: params?.companyId,
+        query: params?.query?.trim(),
+      })}`,
+    ),
+
+  listTrips: (params?: {
+    page?: number;
+    size?: number;
+    status?: string;
+    companyId?: number | string;
+    query?: string;
+  }) =>
+    request<PagedResponse<AdminTripResponse>>(
+      `/api/v1/admin/trips${buildQuery({
+        page: params?.page ?? 0,
+        size: params?.size ?? 10,
+        status: params?.status,
+        companyId: params?.companyId,
+        query: params?.query?.trim(),
+      })}`,
+    ),
 };

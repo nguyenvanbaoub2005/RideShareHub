@@ -27,7 +27,7 @@ export function LoginPage() {
     try {
       const role = await login(email.trim(), password);
       if (role === 'ADMIN') {
-        navigate('/admin/companies', { replace: true });
+        navigate('/admin/dashboard', { replace: true });
       } else if (role === 'TRANSPORT_COMPANY') {
         navigate('/company/profile', { replace: true });
       } else {

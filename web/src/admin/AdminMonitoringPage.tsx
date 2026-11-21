@@ -16,6 +16,7 @@ import { Badge } from '../components/Badge';
 import { ErrorAlert, SuccessAlert } from '../components/Alert';
 import { Icon } from '../components/Icon';
 import { PageSpinner, Spinner } from '../components/Spinner';
+import { buildAdminNav } from './adminNav';
 
 function formatTime(iso?: string | null): string {
   if (!iso) return '—';
@@ -122,24 +123,10 @@ export function AdminMonitoringPage() {
     return true;
   });
 
-  const navItems = [
-    {
-      id: 'nav-admin-companies',
-      to: '/admin/companies',
-      label: 'Quản lý nhà xe',
-      icon: 'building',
-      active: false,
-      badge: pendingCompaniesCount,
-    },
-    {
-      id: 'nav-admin-monitoring',
-      to: '/admin/monitoring',
-      label: 'Giám sát vận hành',
-      icon: 'route',
-      active: true,
-      badge: openIncidentsCount,
-    },
-  ];
+  const navItems = buildAdminNav('monitoring', {
+    pendingCompanies: pendingCompaniesCount,
+    openIncidents: openIncidentsCount,
+  });
 
   return (
     <AppShell

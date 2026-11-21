@@ -26,6 +26,12 @@ import com.ridesharehub.driver.dto.DriverRequest;
 import com.ridesharehub.driver.dto.DriverResponse;
 import com.ridesharehub.driver.enums.DriverStatus;
 import com.ridesharehub.driver.repository.DriverRepository;
+import com.ridesharehub.admin.dto.AdminOverviewResponse;
+import com.ridesharehub.admin.service.AdminDirectoryService;
+import com.ridesharehub.rating.dto.CreateRatingRequest;
+import com.ridesharehub.rating.dto.RatingResponse;
+import com.ridesharehub.rating.repository.RatingRepository;
+import com.ridesharehub.rating.service.RatingService;
 import com.ridesharehub.route.dto.RouteRequest;
 import com.ridesharehub.route.dto.RouteResponse;
 import com.ridesharehub.route.service.RouteService;
@@ -216,6 +222,8 @@ class CoreJourneyEndToEndTest {
     @Autowired private RouteOptimizationService routeOptimizationService;
     @Autowired private TripExecutionService tripExecutionService;
     @Autowired private TripIncidentService tripIncidentService;
+    @Autowired private RatingService ratingService;
+    @Autowired private AdminDirectoryService adminDirectoryService;
 
     @Autowired private JwtService jwtService;
     @Autowired private UserRepository userRepository;
@@ -228,9 +236,11 @@ class CoreJourneyEndToEndTest {
     @Autowired private TripStopRepository tripStopRepository;
     @Autowired private RouteProposalRepository routeProposalRepository;
     @Autowired private TripIncidentRepository tripIncidentRepository;
+    @Autowired private RatingRepository ratingRepository;
 
     @BeforeEach
     void cleanDb() {
+        ratingRepository.deleteAll();
         tripIncidentRepository.deleteAll();
         tripStopRepository.deleteAll();
         routeProposalRepository.deleteAll();
@@ -450,5 +460,49 @@ class CoreJourneyEndToEndTest {
                 .isEqualTo(DriverStatus.AVAILABLE);
         assertThat(vehicleRepository.findById(vehicle.id()).orElseThrow().getStatus())
                 .isEqualTo(VehicleStatus.AVAILABLE);
+
+        // 10. SP4-P1: Completed Passengers submit 1-5 star ratings & Admin Overview aggregates KPIs
+        RatingResponse r1 = ratingService.createRating(
+                b1.id(),
+                new CreateRatingRequest(null, 5, 5, 5, "Tài xế rất đúng giờ, xe sạch đẹp."),
+                p1Principal);
+        assertThat(r1.score()).isEqualTo(5);
+
+        RatingResponse r2 = ratingService.createRating(
+                b2.id(),
+                new CreateRatingRequest(4, 4, 4, 4, "Chuyến đi ổn định, đón đúng điểm."),
+                p2Principal);
+        assertThat(r2.score()).isEqualTo(4);
+
+        // Single-rating rule: duplicate rating on b1 MUST fail with 409 CONFLICT
+        assertThatThrownBy(() -> ratingService.createRating(
+                        b1.id(),
+                        new CreateRatingRequest(5, 5, 5, 5, "Duplicate"),
+                        p1Principal))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                        .isEqualTo(HttpStatus.CONFLICT));
+
+        // Company average rating updated to (5 + 4) / 2 = 4.50, ratingCount = 2
+        var ratedCompany = companyRepository.findById(companyId).orElseThrow();
+        assertThat(ratedCompany.getRatingCount()).isEqualTo(2);
+        assertThat(ratedCompany.getAvgRating()).isEqualByComparingTo(new BigDecimal("4.50"));
+
+        // Passenger bookings response reflects rated flag
+        assertThat(bookingService.listMyBookings(p1Principal))
+                .anySatisfy(item -> {
+                    assertThat(item.id()).isEqualTo(b1.id());
+                    assertThat(item.rated()).isTrue();
+                    assertThat(item.ratingScore()).isEqualTo(5);
+                });
+
+        // Admin Overview reflects full end-to-end state
+        AdminOverviewResponse overview = adminDirectoryService.getOverview();
+        assertThat(overview.totalCompanies()).isEqualTo(1);
+        assertThat(overview.approvedCompanies()).isEqualTo(1);
+        assertThat(overview.completedTrips()).isEqualTo(1);
+        assertThat(overview.completedBookings()).isEqualTo(2);
+        assertThat(overview.totalRatings()).isEqualTo(2);
+        assertThat(overview.averageRating()).isEqualByComparingTo(new BigDecimal("4.50"));
     }
 }
