@@ -609,10 +609,11 @@ export default function PassengerBookingsScreen() {
                       style={[styles.trackFullBtn, { flex: 1.4 }]}
                       onPress={() => {
                         const tId = selected.tripId;
+                        const bId = selected.id;
                         setSelected(null);
                         router.push({
                           pathname: '/(passenger)/tracking/[tripId]',
-                          params: { tripId: String(tId) },
+                          params: { tripId: String(tId), bookingId: String(bId) },
                         } as never);
                       }}
                       accessibilityRole="button"
