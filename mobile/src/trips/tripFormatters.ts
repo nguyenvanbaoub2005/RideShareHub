@@ -42,6 +42,30 @@ export function formatDateShort(isoOrDate: string): string {
   });
 }
 
+/** Format DD/MM/YYYY date matching Figma PA-11/PA-12 (e.g. "18/07/2025"). */
+export function formatDateDMY(isoOrDate: string): string {
+  const normalized = isoOrDate.length === 10 ? `${isoOrDate}T00:00:00` : isoOrDate;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return isoOrDate;
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+/** Generate display seat labels (e.g. ["A1", "A2"]) matching Figma PA-09..PA-12. */
+export function formatSeatLabels(seatCount: number, startIndex = 0): string[] {
+  const rows = 'ABCD';
+  const count = Math.max(1, seatCount);
+  const start = Math.max(0, startIndex);
+  return Array.from({ length: count }, (_, idx) => {
+    const pos = start + idx;
+    const rowChar = rows[Math.floor(pos / 4) % rows.length] ?? 'A';
+    const colNum = (pos % 4) + 1;
+    return `${rowChar}${colNum}`;
+  });
+}
+
 /** Format HH:mm from ISO string. */
 export function formatTimeOnly(iso: string): string {
   return new Date(iso).toLocaleTimeString('vi-VN', {

@@ -51,6 +51,7 @@ import {
   formatDateLong,
   formatDateShort,
   formatDuration,
+  formatSeatLabels,
   formatTimeOnly,
   formatVehicleLabel,
   formatVND,
@@ -345,6 +346,8 @@ export default function TripDetailScreen() {
    * PA-10 Đặt chỗ thành công
    * ========================================================================= */
   if (step === 'success' && createdBooking) {
+    const bookedSeatsBeforeThis = Math.max(0, totalSeats - trip.availableSeats);
+    const assignedSeatList = formatSeatLabels(createdBooking.seatCount, bookedSeatsBeforeThis);
     return (
       <View style={styles.root}>
         <ScrollView contentContainerStyle={styles.successScroll}>
@@ -392,7 +395,7 @@ export default function TripDetailScreen() {
               label="Khởi hành"
               value={`${formatTimeOnly(createdBooking.departureTime)} · ${formatDateShort(createdBooking.departureTime)}`}
             />
-            <KeyValueRow label="Số lượng chỗ" value={`${createdBooking.seatCount} chỗ`} />
+            <KeyValueRow label="Ghế" value={assignedSeatList.join(', ')} />
             <KeyValueRow label="Điểm đón" value={createdBooking.pickup.label} />
             <KeyValueRow label="Điểm trả" value={createdBooking.dropoff.label} />
             <View style={styles.divider} />
@@ -416,7 +419,7 @@ export default function TripDetailScreen() {
               onPress={() => router.replace('/(passenger)/bookings')}
             >
               <LinearGradient
-                colors={['#5438f5', '#4328d6']}
+                colors={['#2563eb', '#1d4ed8']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.primaryBtn}
@@ -436,6 +439,8 @@ export default function TripDetailScreen() {
   if (step === 'confirm') {
     const finalPickupLabel = combineLabelWithNote(pickupLoc.label, pickupNote);
     const finalDropoffLabel = combineLabelWithNote(dropoffLoc.label, dropoffNote);
+    const bookedSeatsBeforeThis = Math.max(0, totalSeats - trip.availableSeats);
+    const previewSeatList = formatSeatLabels(seatCount, bookedSeatsBeforeThis);
 
     return (
       <View style={styles.root}>
@@ -480,16 +485,16 @@ export default function TripDetailScreen() {
           </Card>
 
           <Card>
-            <SectionHeading>Số lượng chỗ đặt</SectionHeading>
+            <SectionHeading>Ghế đã chọn</SectionHeading>
             <View style={styles.seatChipRow}>
-              {Array.from({ length: seatCount }, (_, idx) => (
-                <View key={idx} style={styles.seatSquareBadge}>
-                  <Text style={styles.seatSquareText}>{`C${idx + 1}`}</Text>
+              {previewSeatList.map(seatCode => (
+                <View key={seatCode} style={styles.seatSquareBadge}>
+                  <Text style={styles.seatSquareText}>{seatCode}</Text>
                 </View>
               ))}
             </View>
             <Text style={styles.seatSquareNote}>
-              Đã chọn giữ {seatCount} chỗ trên chuyến xe (thanh toán trực tiếp với nhà xe).
+              Ghế được xếp tự động theo thứ tự còn trống.
             </Text>
           </Card>
 

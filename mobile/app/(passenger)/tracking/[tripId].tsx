@@ -711,11 +711,13 @@ export default function PassengerLiveTrackingScreen() {
               }}
             >
               <Text style={[styles.sectionTitle, { marginBottom: 0, flex: 1 }]}>
-                LỘ TRÌNH ĐÓN / TRẢ DỰ KIẾN ({snapshot.stops.length})
+                {snapshot.routeOptimized
+                  ? `LỘ TRÌNH ĐÓN / TRẢ (${snapshot.stops.length})`
+                  : 'ĐIỂM ĐÓN / TRẢ CỦA BẠN'}
               </Text>
               <View
                 style={{
-                  backgroundColor: snapshot.routeOptimized ? '#DCFCE7' : '#FEF3C7',
+                  backgroundColor: snapshot.routeOptimized ? '#DCFCE7' : COLORS.primarySoft,
                   paddingHorizontal: 8,
                   paddingVertical: 3,
                   borderRadius: 999,
@@ -725,21 +727,15 @@ export default function PassengerLiveTrackingScreen() {
                   style={{
                     fontSize: 10,
                     fontWeight: '800',
-                    color: snapshot.routeOptimized ? '#166534' : '#92400E',
+                    color: snapshot.routeOptimized ? '#166534' : COLORS.primary,
                   }}
                 >
                   {snapshot.routeOptimized
-                    ? `✓ Đã duyệt lộ trình tối ưu #${snapshot.acceptedProposalId}`
-                    : 'Đang chờ duyệt lộ trình tối ưu'}
+                    ? '✓ Lộ trình chính thức'
+                    : 'Đã ghi nhận điểm đón · trả'}
                 </Text>
               </View>
             </View>
-
-            {!snapshot.routeOptimized ? (
-              <Text style={{ fontSize: 12, color: COLORS.slate500, marginBottom: 10, lineHeight: 17 }}>
-                Nhà xe chưa chốt đề xuất lộ trình tối ưu — vì lý do bảo mật, hệ thống hiện chỉ hiển thị điểm đón/trả riêng của bạn.
-              </Text>
-            ) : null}
 
             {snapshot.stops.length === 0 ? (
               <Text style={styles.emptyMeta}>Chưa có danh sách điểm dừng trên chuyến này.</Text>

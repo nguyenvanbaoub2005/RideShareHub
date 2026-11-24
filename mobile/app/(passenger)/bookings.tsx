@@ -44,8 +44,9 @@ import {
 import { CARD_SHADOW, COLORS } from '../../src/theme/tokens';
 import {
   formatArrivalTime,
+  formatDateDMY,
   formatDateShort,
-  formatDeparture,
+  formatSeatLabels,
   formatTimeOnly,
   formatVND,
 } from '../../src/trips/tripFormatters';
@@ -62,6 +63,25 @@ function groupOf(status: BookingRecord['status']): TabGroup {
   if (status === 'COMPLETED') return 'COMPLETED';
   if (status === 'CANCELLED' || status === 'NO_SHOW') return 'CANCELLED';
   return 'UPCOMING';
+}
+
+function getBookingStatusBadgeProps(booking: BookingRecord): { status: string; label?: string } {
+  if (booking.status === 'COMPLETED') return { status: 'COMPLETED', label: 'Hoàn thành' };
+  if (booking.status === 'CANCELLED') return { status: 'CANCELLED', label: 'Đã hủy' };
+  if (booking.status === 'NO_SHOW') return { status: 'NO_SHOW', label: 'Vắng mặt' };
+  if (booking.status === 'PICKED_UP') return { status: 'PICKED_UP', label: 'Đang trên xe' };
+  const minutesUntil = Math.floor(
+    (new Date(booking.departureTime).getTime() - Date.now()) / 60_000,
+  );
+  if (minutesUntil <= 240) {
+    return { status: 'CONFIRMED', label: 'Sắp khởi hành' };
+  }
+  return { status: 'NO_SHOW', label: 'Sắp đi' };
+}
+
+function getSeatDisplay(booking: BookingRecord): string {
+  const startIdx = Math.max(0, (booking.id ?? 0) % 8);
+  return formatSeatLabels(booking.seatCount, startIdx).join(', ');
 }
 
 const STAR_LABELS = ['', 'Rất tệ', 'Chưa tốt', 'Bình thường', 'Tốt', 'Tuyệt vời'];
@@ -221,6 +241,7 @@ export default function PassengerBookingsScreen() {
   };
 
   function renderBookingItem({ item }: { item: BookingRecord }) {
+    const badgeProps = getBookingStatusBadgeProps(item);
     return (
       <Pressable
         style={styles.card}
@@ -234,39 +255,21 @@ export default function PassengerBookingsScreen() {
       >
         <View style={styles.cardHeader}>
           <Text style={styles.bookingCode}>{item.bookingCode}</Text>
-          <StatusBadge status={item.status} />
+          <StatusBadge status={badgeProps.status} label={badgeProps.label} />
         </View>
 
         <Text style={styles.routeText}>
           {item.origin} → {item.destination}
         </Text>
         <Text style={styles.depText}>
-          {formatDateShort(item.departureTime)} · {formatTimeOnly(item.departureTime)} ·{' '}
+          {formatDateDMY(item.departureTime)} · {formatTimeOnly(item.departureTime)} ·{' '}
           {item.companyName}
         </Text>
-
-        {/* Compact Pickup/Dropoff visual summary */}
-        <View style={styles.routeSnippetBox}>
-          <View style={styles.snippetLine}>
-            <View style={[styles.snippetDot, { backgroundColor: COLORS.teal }]} />
-            <Text style={styles.snippetText} numberOfLines={1}>
-              Đón: {item.pickup.label}
-            </Text>
-          </View>
-          <View style={styles.snippetLine}>
-            <View style={[styles.snippetDot, { backgroundColor: COLORS.danger }]} />
-            <Text style={styles.snippetText} numberOfLines={1}>
-              Trả: {item.dropoff.label}
-            </Text>
-          </View>
-        </View>
 
         <View style={styles.footerRow}>
           <View style={styles.seatMetaRow}>
             <TicketGlyph size={16} color={COLORS.slate500} />
-            <Text style={styles.seatText}>
-              {item.seatCount} chỗ · {item.vehiclePlate}
-            </Text>
+            <Text style={styles.seatText}>Ghế {getSeatDisplay(item)}</Text>
           </View>
           <Text style={styles.fareText}>{formatVND(item.fareEstimate)}</Text>
         </View>
@@ -274,64 +277,22 @@ export default function PassengerBookingsScreen() {
         {item.status === 'COMPLETED' ? (
           item.rated ? (
             <View style={styles.ratedBadgeRow}>
-              <StarGlyph size={15} color={COLORS.warning} filled />
+              <StarGlyph size={14} color={COLORS.warning} filled />
               <Text style={styles.ratedBadgeText}>
                 Đã đánh giá ★ {item.ratingScore ?? 5}/5
               </Text>
             </View>
           ) : (
             <Pressable
-              style={styles.rateCtaBtn}
+              style={styles.unratedInlineRow}
               onPress={() => openRatingModal(item)}
               accessibilityRole="button"
               accessibilityLabel={`Đánh giá chuyến đi ${item.bookingCode}`}
             >
-              <StarGlyph size={16} color={COLORS.warningText} filled />
-              <Text style={styles.rateCtaText}>Đánh giá chuyến đi (PA-15) →</Text>
+              <StarGlyph size={14} color={COLORS.primary} />
+              <Text style={styles.unratedInlineText}>Chưa đánh giá</Text>
             </Pressable>
           )
-        ) : item.status !== 'CANCELLED' && item.status !== 'NO_SHOW' ? (
-          <Pressable
-            style={{
-              marginTop: 10,
-              backgroundColor: item.status === 'PICKED_UP' ? '#ECFDF5' : '#EEF2FF',
-              borderColor: item.status === 'PICKED_UP' ? '#6EE7B7' : '#C7D2FE',
-              borderWidth: 1,
-              borderRadius: 11,
-              paddingVertical: 9,
-              paddingHorizontal: 12,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-            onPress={() =>
-              router.push({
-                pathname: '/(passenger)/tracking/[tripId]',
-                params: { tripId: String(item.tripId) },
-              } as never)
-            }
-            accessibilityRole="button"
-            accessibilityLabel="Theo dõi vị trí xe trực tiếp"
-          >
-            <Text
-              style={{
-                fontSize: 12,
-                fontWeight: '800',
-                color: item.status === 'PICKED_UP' ? '#065F46' : COLORS.primary,
-              }}
-            >
-              📡 Theo dõi xe & Lộ trình trực tiếp (Realtime)
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                fontWeight: '800',
-                color: item.status === 'PICKED_UP' ? '#065F46' : COLORS.primary,
-              }}
-            >
-              Xem bản đồ →
-            </Text>
-          </Pressable>
         ) : null}
       </Pressable>
     );
@@ -432,7 +393,12 @@ export default function PassengerBookingsScreen() {
                 setSelected(null);
                 setConfirmCancel(false);
               }}
-              right={<StatusBadge status={selected.status} />}
+              right={
+                <StatusBadge
+                  status={getBookingStatusBadgeProps(selected).status}
+                  label={getBookingStatusBadgeProps(selected).label}
+                />
+              }
             />
 
             <ScrollView contentContainerStyle={styles.detailScroll}>
@@ -441,68 +407,33 @@ export default function PassengerBookingsScreen() {
                 <Text style={styles.navyTicketCode}>{selected.bookingCode}</Text>
               </View>
 
-              {selected.status !== 'COMPLETED' &&
-              selected.status !== 'CANCELLED' &&
-              selected.status !== 'NO_SHOW' ? (
-                <Pressable
-                  style={{
-                    backgroundColor: COLORS.primary,
-                    borderRadius: 14,
-                    paddingVertical: 14,
-                    paddingHorizontal: 16,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    marginBottom: 4,
-                  }}
-                  onPress={() => {
-                    const tId = selected.tripId;
-                    setSelected(null);
-                    router.push({
-                      pathname: '/(passenger)/tracking/[tripId]',
-                      params: { tripId: String(tId) },
-                    } as never);
-                  }}
-                  accessibilityRole="button"
-                >
-                  <BusGlyph size={16} color="#ffffff" />
-                  <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '800' }}>
-                    📡 Mở bản đồ theo dõi xe trực tiếp (Realtime PA-13)
-                  </Text>
-                </Pressable>
-              ) : null}
-
               <Card>
                 <SectionHeading>Chuyến đi</SectionHeading>
                 <Text style={styles.detailRoute}>
                   {selected.origin} → {selected.destination}
                 </Text>
                 <View style={styles.detailTimeline}>
-                  <View>
-                    <Text style={styles.detailTimeBig}>{formatTimeOnly(selected.departureTime)}</Text>
-                    <Text style={styles.detailCitySub}>{selected.origin}</Text>
-                  </View>
-                  <View style={styles.detailDashWrap}>
-                    <View style={[styles.snippetDot, { backgroundColor: COLORS.teal }]} />
-                    <View style={styles.detailDashedLine} />
-                    <BusGlyph size={16} color={COLORS.primary} />
-                    <View style={styles.detailDashedLine} />
-                    <View style={[styles.snippetDot, { backgroundColor: COLORS.danger }]} />
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={styles.detailTimeBig}>
-                      {selected.estimatedMinutes
-                        ? formatArrivalTime(selected.departureTime, selected.estimatedMinutes)
-                        : formatDateShort(selected.departureTime)}
-                    </Text>
-                    <Text style={styles.detailCitySub}>{selected.destination}</Text>
-                  </View>
+                  <Text style={styles.detailTimeBig}>{formatTimeOnly(selected.departureTime)}</Text>
+                  <View style={styles.detailDashedLine} />
+                  <Text style={styles.detailTimeBig}>
+                    {selected.estimatedMinutes
+                      ? formatArrivalTime(selected.departureTime, selected.estimatedMinutes)
+                      : formatDateShort(selected.departureTime)}
+                  </Text>
                 </View>
                 <View style={styles.cardDivider} />
-                <KeyValueRow label="Khởi hành" value={formatDeparture(selected.departureTime)} />
+                <KeyValueRow label="Ngày" value={formatDateDMY(selected.departureTime)} />
                 <KeyValueRow label="Nhà xe" value={selected.companyName} />
-                <KeyValueRow label="Số chỗ" value={`${selected.seatCount} chỗ`} />
+                <KeyValueRow label="Ghế" value={getSeatDisplay(selected)} />
+              </Card>
+
+              <Card>
+                <SectionHeading>Hành khách</SectionHeading>
+                <KeyValueRow label="Họ và tên" value={selected.passengerName} />
+                <KeyValueRow
+                  label="Số điện thoại"
+                  value={selected.passengerPhone || 'Chưa cập nhật'}
+                />
               </Card>
 
               <Card>
@@ -517,8 +448,8 @@ export default function PassengerBookingsScreen() {
                       <Text style={styles.locationAddr}>{selected.pickup.label}</Text>
                       {selected.pickup.latitude != null && selected.pickup.longitude != null ? (
                         <Text style={styles.gpsBadgeText}>
-                          GPS: {Number(selected.pickup.latitude).toFixed(5)},{' '}
-                          {Number(selected.pickup.longitude).toFixed(5)}
+                          GPS: {Number(selected.pickup.latitude).toFixed(6)},{' '}
+                          {Number(selected.pickup.longitude).toFixed(6)}
                         </Text>
                       ) : null}
                     </View>
@@ -533,8 +464,8 @@ export default function PassengerBookingsScreen() {
                       <Text style={styles.locationAddr}>{selected.dropoff.label}</Text>
                       {selected.dropoff.latitude != null && selected.dropoff.longitude != null ? (
                         <Text style={styles.gpsBadgeText}>
-                          GPS: {Number(selected.dropoff.latitude).toFixed(5)},{' '}
-                          {Number(selected.dropoff.longitude).toFixed(5)}
+                          GPS: {Number(selected.dropoff.latitude).toFixed(6)},{' '}
+                          {Number(selected.dropoff.longitude).toFixed(6)}
                         </Text>
                       ) : null}
                     </View>
@@ -543,7 +474,7 @@ export default function PassengerBookingsScreen() {
               </Card>
 
               <Card>
-                <SectionHeading>Tài xế &amp; phương tiện</SectionHeading>
+                <SectionHeading>Tài xế và phương tiện</SectionHeading>
                 <View style={styles.driverSummaryRow}>
                   <View style={styles.driverAvatarCircle}>
                     <Text style={styles.driverAvatarText}>
@@ -552,11 +483,8 @@ export default function PassengerBookingsScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.driverTitle}>{selected.driverName}</Text>
-                    <Text style={styles.driverSub}>
-                      {selected.vehicleType} · Biển số {selected.vehiclePlate}
-                    </Text>
                     {selected.driverPhone ? (
-                      <Text style={styles.driverPhoneSub}>{selected.driverPhone}</Text>
+                      <Text style={styles.driverSub}>{selected.driverPhone}</Text>
                     ) : null}
                   </View>
                   {selected.driverPhone ? (
@@ -577,6 +505,9 @@ export default function PassengerBookingsScreen() {
                     </View>
                   )}
                 </View>
+                <View style={styles.cardDivider} />
+                <KeyValueRow label="Xe" value={selected.vehicleType} />
+                <KeyValueRow label="Biển số" value={selected.vehiclePlate} />
               </Card>
 
               <Card>
@@ -588,27 +519,14 @@ export default function PassengerBookingsScreen() {
                 <Text style={styles.payNote}>Thanh toán trực tiếp cho tài xế khi lên xe.</Text>
               </Card>
 
-              {canCancelSelected ? (
-                <View style={[styles.policyBox, isWithinCancelCutoff && styles.policyBoxBlocked]}>
-                  <Text
-                    style={[
-                      styles.policyBoxTitle,
-                      isWithinCancelCutoff && styles.policyBoxTitleBlocked,
-                    ]}
-                  >
-                    {isWithinCancelCutoff
-                      ? 'Đã khóa hủy đặt chỗ (còn dưới 30 phút)'
-                      : 'Chính sách hủy đặt chỗ'}
+              {canCancelSelected && isWithinCancelCutoff ? (
+                <View style={[styles.policyBox, styles.policyBoxBlocked]}>
+                  <Text style={[styles.policyBoxTitle, styles.policyBoxTitleBlocked]}>
+                    Đã khóa hủy đặt chỗ (còn dưới 30 phút)
                   </Text>
-                  <Text
-                    style={[
-                      styles.policyBoxBody,
-                      isWithinCancelCutoff && styles.policyBoxBodyBlocked,
-                    ]}
-                  >
-                    {isWithinCancelCutoff
-                      ? 'Hành khách chỉ được hủy vé trước giờ khởi hành ít nhất 30 phút. Vui lòng liên hệ trực tiếp nhà xe nếu cần hỗ trợ khẩn cấp.'
-                      : `Bạn có thể hủy vé miễn phí trước giờ khởi hành ít nhất 30 phút (còn khoảng ${minutesUntilSelected} phút nữa tới giờ khởi hành).`}
+                  <Text style={[styles.policyBoxBody, styles.policyBoxBodyBlocked]}>
+                    Chỉ có thể hủy vé trước giờ khởi hành ít nhất 30 phút. Chuyến này không còn đủ
+                    điều kiện hủy.
                   </Text>
                 </View>
               ) : null}
@@ -647,7 +565,7 @@ export default function PassengerBookingsScreen() {
                   </Pressable>
                 )}
               </View>
-            ) : canCancelSelected && !isWithinCancelCutoff ? (
+            ) : selected.status !== 'CANCELLED' && selected.status !== 'NO_SHOW' ? (
               <View style={styles.detailFooter}>
                 {confirmCancel ? (
                   <View style={styles.confirmBox}>
@@ -676,14 +594,34 @@ export default function PassengerBookingsScreen() {
                     </View>
                   </View>
                 ) : (
-                  <Pressable
-                    style={styles.cancelFullBtn}
-                    onPress={() => setConfirmCancel(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Hủy vé ${selected.bookingCode}`}
-                  >
-                    <Text style={styles.cancelFullBtnText}>Hủy đặt chỗ</Text>
-                  </Pressable>
+                  <View style={styles.footerActionRow}>
+                    {canCancelSelected && !isWithinCancelCutoff ? (
+                      <Pressable
+                        style={[styles.cancelOutlineBtn, { flex: 1 }]}
+                        onPress={() => setConfirmCancel(true)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Hủy vé ${selected.bookingCode}`}
+                      >
+                        <Text style={styles.cancelOutlineBtnText}>Hủy đặt chỗ</Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable
+                      style={[styles.trackFullBtn, { flex: 1.4 }]}
+                      onPress={() => {
+                        const tId = selected.tripId;
+                        setSelected(null);
+                        router.push({
+                          pathname: '/(passenger)/tracking/[tripId]',
+                          params: { tripId: String(tId) },
+                        } as never);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Theo dõi chuyến"
+                    >
+                      <BusGlyph size={18} color="#ffffff" />
+                      <Text style={styles.trackFullBtnText}>Theo dõi chuyến</Text>
+                    </Pressable>
+                  </View>
                 )}
               </View>
             ) : null}
@@ -1047,6 +985,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 24,
+  },
+  footerActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  cancelOutlineBtn: {
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    backgroundColor: COLORS.dangerSoft,
+    borderRadius: 12,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelOutlineBtnText: { color: COLORS.danger, fontSize: 14, fontWeight: '700' },
+  trackFullBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    height: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  trackFullBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+  unratedInlineRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  unratedInlineText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
   cancelFullBtn: {
     backgroundColor: COLORS.danger,
